@@ -1,19 +1,42 @@
 package com.example.tmppp_library_management.abstractClasses;
 
-import com.example.tmppp_library_management.entity.Stock;
-import com.example.tmppp_library_management.interfaces.IStockable;
+public abstract class StockedItem extends LibraryItem {
+    protected int quantity;
+    protected int availableQuantity;
+    protected int reservedQuantity;
 
-public abstract class StockedItem extends LibraryItem implements IStockable {
-    protected Stock stock;
-
-    public StockedItem(int itemId, String title, int publicationYear, int quantity) {
-        super(itemId, title, publicationYear);
-        this.stock = new Stock(quantity);
+    public StockedItem(int itemId, String title, int publicationDate, int pageCount) {
+        super(itemId, title, publicationDate, pageCount);
+        this.quantity = 0;
+        this.availableQuantity = 0;
+        this.reservedQuantity = 0;
     }
 
-    @Override
-    public Stock getStock() {
-        return stock;
+    public boolean reserve(int quantity) {
+        if (availableQuantity >= quantity) {
+            availableQuantity -= quantity;
+            reservedQuantity += quantity;
+            return true;
+        }
+        return false;
     }
+
+    public void release(int quantity) {
+        if (reservedQuantity >= quantity) {
+            availableQuantity += quantity;
+            reservedQuantity -= quantity;
+        }
+    }
+
+    public void updateStock(int change) {
+        this.quantity += change;
+        this.availableQuantity += change;
+    }
+
+    public int getQuantity() { return quantity; }
+    public void setQuantity(int quantity) { this.quantity = quantity; }
+    public int getAvailableQuantity() { return availableQuantity; }
+    public void setAvailableQuantity(int availableQuantity) { this.availableQuantity = availableQuantity; }
+    public int getReservedQuantity() { return reservedQuantity; }
+    public void setReservedQuantity(int reservedQuantity) { this.reservedQuantity = reservedQuantity; }
 }
-

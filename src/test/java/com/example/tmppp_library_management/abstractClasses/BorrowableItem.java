@@ -1,40 +1,48 @@
 package com.example.tmppp_library_management.abstractClasses;
 
 import com.example.tmppp_library_management.interfaces.IBorrowable;
-import com.example.tmppp_library_management.interfaces.IStockable;
 
-public abstract class BorrowableItem extends StockedItem implements IBorrowable {
-    protected boolean borrowed = false;
-    protected int borrowedByUserId = -1;
+public abstract class BorrowableItem extends LibraryItem implements IBorrowable {
+    protected boolean borrowed;
+    protected int borrowerId;
+    protected int borrowedCount;
 
-    public BorrowableItem(int itemId, String title, int publicationYear, int quantity) {
-        super(itemId, title, publicationYear, quantity);
+    public BorrowableItem(int itemId, String title, int publicationDate, int pageCount) {
+        super(itemId, title, publicationDate, pageCount);
+        this.borrowed = false;
+        this.borrowerId = -1;
+        this.borrowedCount = 0;
     }
 
     @Override
-    public void borrowItem(int userId) {
-        if (!borrowed && stock.getQuantity() > 0) {
-            borrowed = true;
-            borrowedByUserId = userId;
-            stock.setQuantity(stock.getQuantity() - 1);
-        } else {
-            throw new IllegalStateException("Item not available to borrow");
+    public void borrowItem() {
+        if (!borrowed) {
+            this.borrowed = true;
+            this.borrowedCount++;
         }
-    }
-
-    @Override
-    public boolean isBorrowed() {
-        return borrowed;
     }
 
     @Override
     public void returnItem() {
-        if (borrowed) {
-            borrowed = false;
-            borrowedByUserId = -1;
-            stock.setQuantity(stock.getQuantity() + 1);
-        }
+        this.borrowed = false;
+        this.borrowerId = -1;
+    }
+
+    @Override
+    public boolean isAvailable() {
+        return !borrowed;
+    }
+
+    @Override
+    public int getBorrowedCount() {
+        return borrowedCount;
+    }
+
+    public int getBorrowerId() {
+        return borrowerId;
+    }
+
+    public void setBorrowerId(int borrowerId) {
+        this.borrowerId = borrowerId;
     }
 }
-
-
