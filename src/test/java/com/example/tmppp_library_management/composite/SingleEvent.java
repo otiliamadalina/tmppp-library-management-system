@@ -9,7 +9,6 @@ public class SingleEvent implements EventComponent {
     private int maxParticipants;
     private int registeredParticipants;
 
-    // Constructor pentru evenimente cu locuri nelimitate
     public SingleEvent(int id, String name, String date, String location, String type) {
         this.id = id;
         this.name = name;
@@ -20,7 +19,6 @@ public class SingleEvent implements EventComponent {
         this.registeredParticipants = 0;
     }
 
-    // Constructor pentru evenimente cu locuri limitate
     public SingleEvent(int id, String name, String date, String location, String type, int maxParticipants) {
         this.id = id;
         this.name = name;

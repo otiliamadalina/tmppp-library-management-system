@@ -1,6 +1,9 @@
 package com.example.tmppp_library_management.user;
 
-public class Member extends User {
+import com.example.tmppp_library_management.visitor.Visitable;
+import com.example.tmppp_library_management.visitor.Visitor;
+
+public class Member extends User implements Visitable {
     private MemberType memberType;
     private int currentLoans;
     private String membershipNumber;
@@ -34,5 +37,10 @@ public class Member extends User {
     public String toString() {
         return String.format("Member[ID=%d, Name=%s, Type=%s, Membership=%s, Loans=%d/%d]",
                 getUserId(), getUserName(), memberType, membershipNumber, currentLoans, getMaxBooks());
+    }
+
+    @Override
+    public void accept(Visitor visitor) {
+        visitor.visit(this);
     }
 }

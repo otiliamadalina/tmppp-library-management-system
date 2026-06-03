@@ -1,0 +1,15 @@
+[27.05.2026 16:09:12] [admin] AUTENTIFICARE: Utilizatorul 'admin' s-a conectat
+[27.05.2026 16:09:12] [admin] AUTENTIFICARE: Utilizatorul 'admin' s-a conectat cu succes
+[27.05.2026 16:09:25] [admin] STATISTICS_VISITOR: Statistici generate folosind Visitor Pattern
+[27.05.2026 16:10:16] [admin] ADAUGA_CARTE: Fantasy: yyyy (ID: 6457, ISBN: 555555555555, Stoc: 58)
+[27.05.2026 16:10:40] [admin] RETUR_CARTE: Prof. George Vasile (ID: 3) a returnat "Stapanul Inelelor" (ID: 102). Penalizare: 0.0 lei, Zile intarziere: 0
+[27.05.2026 16:11:28] [admin] PRELUNGIRE_IMPRUMUT: Imprumutul cu ID 5 a fost prelungit cu 14 zile
+[27.05.2026 20:54:07] [admin] AUTENTIFICARE: Utilizatorul 'admin' s-a conectat
+[27.05.2026 20:54:07] [admin] AUTENTIFICARE: Utilizatorul 'admin' s-a conectat cu succes
+[27.05.2026 21:11:09] [admin] CREARE_PACHET_CADOU: Standard - Carte: Stapanul Inelelor (ID: 102), Pret total: 7.00 lei
+[27.05.2026 21:11:13] [admin] CREARE_PACHET_CADOU: Premium - Carte: Un veac de singuratate (ID: 106), Pret total: 20.00 lei
+[27.05.2026 21:11:19] [admin] CREARE_PACHET_CADOU: Standard - Carte: Umbra Vantului (ID: 105), Pret total: 7.00 lei
+[27.05.2026 21:11:23] [admin] CREARE_PACHET_CADOU: Premium - Carte: Jocul Tronurilor (ID: 103), Pret total: 20.00 lei
+[27.05.2026 21:12:43] [admin] INREGISTRARE_EVENIMENT: Ana Marinescu (ID: 4) s-a inregistrat la Club de lectura - Rebreanu (ID: 3). Locuri ramase: -1
+[27.05.2026 21:12:52] [admin] INREGISTRARE_EVENIMENT: Ion Popescu (ID: 1) s-a inregistrat la Lansarea cartii 'Ion' - Editie aniversara (ID: 1). Locuri ramase: -1
+[27.05.2026 21:13:52] [admin] STATISTICS_VISITOR: Statistici generate folosind Visitor Pattern

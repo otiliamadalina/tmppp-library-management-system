@@ -102,7 +102,7 @@ public class LibrarianService {
                 librarian.addToLog("S-a deconectat din sistem");
             }
         }
-        System.out.println("✓ Delogare cu succes!");
+        System.out.println(" Delogare cu succes");
     }
 
     public Librarian getCurrentLibrarian(String token) {
@@ -133,7 +133,7 @@ public class LibrarianService {
         librarians.put(username, librarian);
         librarian.addToLog("Cont creat");
 
-        System.out.println("✓ Librarian inregistrat: " + username);
+        System.out.println(" Librarian inregistrat: " + username);
         return librarian;
     }
 

@@ -13,6 +13,7 @@ public class Stock {
         this.quantity = initialQuantity;
         this.availableQuantity = initialQuantity;
         this.reservedQuantity = 0;
+        this.lostCount = 0;
     }
 
     public int getStockId() { return stockId; }
@@ -32,5 +33,15 @@ public class Stock {
     public int getReservedQuantity() { return reservedQuantity; }
     public void setReservedQuantity(int reservedQuantity) {
         this.reservedQuantity = reservedQuantity;
+    }
+
+    private int lostCount;
+
+    public int getLostCount() {
+        return lostCount;
+    }
+
+    public void setLostCount(int lostCount) {
+        this.lostCount = lostCount;
     }
 }

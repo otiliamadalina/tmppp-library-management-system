@@ -5,6 +5,7 @@ import com.example.tmppp_library_management.bridge.PenaltyCalculator;
 import com.example.tmppp_library_management.decorator.*;
 import com.example.tmppp_library_management.entity.Loan;
 import com.example.tmppp_library_management.interfaces.IBorrowable;
+import com.example.tmppp_library_management.state.AvailabilityService;
 import com.example.tmppp_library_management.user.Member;
 import com.example.tmppp_library_management.prototype.LoanTemplate;
 import com.example.tmppp_library_management.singleton.LoanTemplateRegistry;
@@ -21,6 +22,7 @@ public class LoanService {
     private int nextLoanId = 1;
     private Stack<LoanMemento> undoStack;
     private Stack<LoanMemento> redoStack;
+    private AvailabilityService availabilityService;
 
     public LoanService() {
         this.templateRegistry = LoanTemplateRegistry.getInstance();
@@ -28,6 +30,9 @@ public class LoanService {
         this.closedLoans = new ArrayList<>();
         this.undoStack = new Stack<>();
         this.redoStack = new Stack<>();
+        this.availabilityService = new AvailabilityService();
+        this.stockService = StockService.getInstance();
+        this.memberService = MemberService.getInstance();
     }
 
     private void saveState(Member member, IBorrowable item, Loan loan) {
@@ -58,6 +63,7 @@ public class LoanService {
     private MemberService memberService = MemberService.getInstance();
 
     public Loan createLoan(Member member, IBorrowable item) {
+        // 1. Verifica restrictia de acces
         if (item instanceof RestrictedAccessDecorator) {
             RestrictedAccessDecorator restricted = (RestrictedAccessDecorator) item;
             if (!restricted.canBorrow(member.getMemberType())) {
@@ -66,6 +72,7 @@ public class LoanService {
             }
         }
 
+        // 2. Verifica daca necesita aprobare
         if (item instanceof ApprovalRequiredDecorator) {
             ApprovalRequiredDecorator approval = (ApprovalRequiredDecorator) item;
             if (!approval.isApproved()) {
@@ -74,8 +81,10 @@ public class LoanService {
             }
         }
 
+        // 3. Verifica daca e doar in sala de lectura
         if (item instanceof ReadingRoomDecorator) {
-            System.out.println("Atentie: Aceasta carte poate fi citita doar in sala de lectura!");
+            System.out.println("Aceasta carte poate fi citita doar in sala de lectura!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            return null;
         }
 
         Book book = getBookFromItem(item);
@@ -84,6 +93,19 @@ public class LoanService {
             return null;
         }
 
+        // 4. Verifica disponibilitatea stocului (doar pentru carti normale)
+        if (!availabilityService.canBeBorrowed(book.getIsbn())) {
+            System.out.println("Stoc indisponibil: " + availabilityService.getStatusMessage(book.getIsbn()));
+            return null;
+        }
+
+        // 5. Verifica limita de imprumut a membrului
+        if (!member.canBorrow()) {
+            System.out.println("Membrul a atins limita maxima de imprumuturi");
+            return null;
+        }
+
+        // 6. Creeaza imprumutul
         LoanTemplate template = templateRegistry.getTemplateForMember(member.getMemberType());
         if (template == null) {
             throw new IllegalArgumentException("Nu exista template pentru " + member.getMemberType());
@@ -94,9 +116,12 @@ public class LoanService {
         loan.setItem(item);
         loan.setActive(true);
 
-        saveState(member, item, loan);
+        // 7. Actualizeaza stocul (doar pentru carti normale)
+        availabilityService.onLoanCreated(book.getIsbn());
 
+        saveState(member, item, loan);
         activeLoans.add(loan);
+
         return loan;
     }
 
@@ -149,8 +174,12 @@ public class LoanService {
     }
 
     public void clearHistory() {
-        undoStack.clear();
-        redoStack.clear();
+        if (undoStack != null) {
+            undoStack.clear();
+        }
+        if (redoStack != null) {
+            redoStack.clear();
+        }
     }
 
     private PenaltyCalculator defaultPenaltyCalculator;
@@ -165,6 +194,14 @@ public class LoanService {
 
     public void closeLoan(Loan loan) {
         if (loan.isActive()) {
+            Book book = loan.getBook();
+            IBorrowable item = loan.getItem();
+
+            // Doar cartile normale actualizeaza stocul la returnare
+            if (book != null && !(item instanceof ReadingRoomDecorator)) {
+                availabilityService.onLoanReturned(book.getIsbn());
+            }
+
             loan.close();
             loan.setActive(false);
             activeLoans.remove(loan);
@@ -227,4 +264,19 @@ public class LoanService {
         }
         return null;
     }
+
+    private int tempLoanId = 1000;
+
+    public int getNextLoanId() {
+        return tempLoanId++;
+    }
+
+    public void addLoan(Loan loan) {
+        if (loan.isActive()) {
+            activeLoans.add(loan);
+        } else {
+            closedLoans.add(loan);
+        }
+    }
+
 }

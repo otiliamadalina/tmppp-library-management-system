@@ -2,8 +2,10 @@ package com.example.tmppp_library_management.book;
 
 import com.example.tmppp_library_management.abstractClasses.BorrowableItem;
 import com.example.tmppp_library_management.flyweight.Publisher;
+import com.example.tmppp_library_management.visitor.Visitable;
+import com.example.tmppp_library_management.visitor.Visitor;
 
-public abstract class Book extends BorrowableItem {
+public abstract class Book extends BorrowableItem implements Visitable {
     protected Author author;
     protected String isbn;
     protected Publisher publisher;
@@ -26,4 +28,9 @@ public abstract class Book extends BorrowableItem {
     public void setPublisher(Publisher publisher) { this.publisher = publisher; }
 
     public abstract String getDescription();
+
+    @Override
+    public void accept(Visitor visitor) {
+        visitor.visit(this);
+    }
 }

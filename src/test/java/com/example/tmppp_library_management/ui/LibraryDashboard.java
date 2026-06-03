@@ -1,12 +1,13 @@
 package com.example.tmppp_library_management.ui;
 
+import com.example.tmppp_library_management.abstractClasses.LibraryItem;
 import com.example.tmppp_library_management.builder.GiftPackage;
+import com.example.tmppp_library_management.builder.GiftPackageService;
+import com.example.tmppp_library_management.builder.PremiumGift;
 import com.example.tmppp_library_management.book.Author;
 import com.example.tmppp_library_management.book.Book;
 import com.example.tmppp_library_management.book.FantasyBook;
 import com.example.tmppp_library_management.book.RomanceBook;
-import com.example.tmppp_library_management.builder.GiftPackageService;
-import com.example.tmppp_library_management.builder.PremiumGift;
 import com.example.tmppp_library_management.chainOfResponsability.*;
 import com.example.tmppp_library_management.composite.EventComponent;
 import com.example.tmppp_library_management.composite.EventGroup;
@@ -17,14 +18,21 @@ import com.example.tmppp_library_management.decorator.BookDecorator;
 import com.example.tmppp_library_management.decorator.ReadingRoomDecorator;
 import com.example.tmppp_library_management.decorator.RestrictedAccessDecorator;
 import com.example.tmppp_library_management.entity.Loan;
+import com.example.tmppp_library_management.entity.Stock;
 import com.example.tmppp_library_management.factories.BookFactory;
 import com.example.tmppp_library_management.factories.NewspaperFactory;
 import com.example.tmppp_library_management.flyweight.Publisher;
 import com.example.tmppp_library_management.flyweight.PublisherFactory;
 import com.example.tmppp_library_management.interfaces.IBorrowable;
+import com.example.tmppp_library_management.iterator.book.BookCollection;
+import com.example.tmppp_library_management.iterator.book.BookIterator;
+import com.example.tmppp_library_management.iterator.newspaper.NewspaperCollection;
+import com.example.tmppp_library_management.iterator.newspaper.NewspaperIterator;
+import com.example.tmppp_library_management.mediator.DashboardRefreshMediator;
 import com.example.tmppp_library_management.memento.LoanCaretaker;
 import com.example.tmppp_library_management.menus.InitializeData;
 import com.example.tmppp_library_management.menus.ReceiptMenu;
+import com.example.tmppp_library_management.menus.StatisticsMenu;
 import com.example.tmppp_library_management.newspaper.LocalNewspaper;
 import com.example.tmppp_library_management.newspaper.NationalNewspaper;
 import com.example.tmppp_library_management.newspaper.Newspaper;
@@ -33,13 +41,21 @@ import com.example.tmppp_library_management.singleton.LoanTemplateRegistry;
 import com.example.tmppp_library_management.user.Librarian;
 import com.example.tmppp_library_management.user.Member;
 import com.example.tmppp_library_management.user.MemberType;
+import com.example.tmppp_library_management.entity.AuditLogger;
+import com.example.tmppp_library_management.visitor.StatisticsResult;
+import com.example.tmppp_library_management.visitor.StatisticsVisitor;
 
 import javax.swing.*;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import java.awt.*;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -61,6 +77,7 @@ public class LibraryDashboard extends JFrame {
     private LoanCaretaker loanCaretaker;
     private ReceiptMenu receiptMenu;
     private JTable loansTable;
+    private StatisticsMenu statisticsMenu;
 
     private ValidationChainFactory validationFactory;
 
@@ -74,10 +91,25 @@ public class LibraryDashboard extends JFrame {
     private CommandHistory commandHistory;
     private Map<String, Command> commands;
 
-    private final Color PRIMARY_PINK = new Color(255, 182, 193);
-    private final Color DARK_PINK = new Color(219, 112, 147);
-    private final Color DARKER_PINK = new Color(199, 21, 133);
-    private final Color LIGHT_PINK = new Color(255, 218, 185);
+    private final Color CREAM_50 = new Color(253, 250, 244);
+    private final Color CREAM_100 = new Color(245, 239, 224);
+    private final Color CREAM_200 = new Color(234, 224, 203);
+    private final Color CREAM_300 = new Color(210, 198, 175);
+    private final Color FOREST_700 = new Color(45, 74, 53);
+    private final Color FOREST_600 = new Color(58, 94, 68);
+    private final Color FOREST_500 = new Color(74, 117, 88);
+    private final Color FOREST_400 = new Color(106, 155, 120);
+    private final Color FOREST_300 = new Color(140, 180, 150);
+    private final Color FOREST_200 = new Color(181, 212, 188);
+    private final Color AMBER = new Color(196, 137, 58);
+    private final Color TEXT_DARK = new Color(30, 45, 34);
+    private final Color TEXT_MUTED = new Color(100, 120, 100);
+
+    private final Font GEORGIA_PLAIN = new Font("Georgia", Font.PLAIN, 12);
+    private final Font GEORGIA_BOLD = new Font("Georgia", Font.BOLD, 12);
+    private final Font GEORGIA_ITALIC = new Font("Georgia", Font.ITALIC, 11);
+    private final Font GEORGIA_BIG = new Font("Georgia", Font.BOLD, 18);
+    private final Font GEORGIA_TITLE = new Font("Georgia", Font.BOLD, 14);
 
     public LibraryDashboard() {
         BookFactory bookFactory = new BookFactory();
@@ -94,6 +126,7 @@ public class LibraryDashboard extends JFrame {
         this.paymentService = PaymentService.getInstance();
         this.loanCaretaker = new LoanCaretaker(loanService);
         this.receiptMenu = new ReceiptMenu();
+        this.statisticsMenu = new StatisticsMenu(bookService, newspaperService, loanService, memberService);
 
         this.commandHistory = new CommandHistory();
         this.commands = new HashMap<>();
@@ -121,6 +154,7 @@ public class LibraryDashboard extends JFrame {
         commands.put("gifts", new ShowGiftsCommand(this));
         commands.put("receipts", new ShowReceiptsCommand(this));
         commands.put("logout", new LogoutCommand(this));
+        commands.put("audit", new ShowAuditCommand(this));
     }
 
     public void executeCommand(String commandName) {
@@ -157,10 +191,17 @@ public class LibraryDashboard extends JFrame {
     }
 
     public void performLogout() {
-        librarianService.logout(currentToken);
-        currentToken = null;
-        dispose();
-        new LibraryDashboard().setVisible(true);
+        int confirm = JOptionPane.showConfirmDialog(this,
+                "Sunteti sigur ca doriti sa va delogati?",
+                "Confirmare delogare",
+                JOptionPane.YES_NO_OPTION);
+        if (confirm == JOptionPane.YES_OPTION) {
+            AuditLogger.getInstance().log("DELOGARE", "Utilizatorul '" + (currentLibrarian != null ? currentLibrarian.getUserName() : "Necunoscut") + "' s-a deconectat");
+            librarianService.logout(currentToken);
+            currentToken = null;
+            dispose();
+            new LibraryDashboard().setVisible(true);
+        }
     }
 
     private void initializeTestData() {
@@ -208,10 +249,10 @@ public class LibraryDashboard extends JFrame {
         loginDialog.setSize(400, 280);
         loginDialog.setLayout(new BorderLayout());
         loginDialog.setLocationRelativeTo(this);
-        loginDialog.getContentPane().setBackground(PRIMARY_PINK);
+        loginDialog.getContentPane().setBackground(CREAM_50);
 
         JPanel mainPanel = new JPanel(new GridBagLayout());
-        mainPanel.setBackground(PRIMARY_PINK);
+        mainPanel.setBackground(CREAM_50);
         mainPanel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -219,8 +260,8 @@ public class LibraryDashboard extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         JLabel titleLabel = new JLabel("Autentificare Librarian");
-        titleLabel.setFont(new Font("Garamond", Font.BOLD, 20));
-        titleLabel.setForeground(Color.BLACK);
+        titleLabel.setFont(new Font("Georgia", Font.BOLD, 20));
+        titleLabel.setForeground(FOREST_700);
         titleLabel.setHorizontalAlignment(SwingConstants.CENTER);
         gbc.gridx = 0;
         gbc.gridy = 0;
@@ -228,40 +269,36 @@ public class LibraryDashboard extends JFrame {
         mainPanel.add(titleLabel, gbc);
 
         JLabel userLabel = new JLabel("Username:");
-        userLabel.setForeground(Color.BLACK);
-        userLabel.setFont(new Font("Garamond", Font.PLAIN, 14));
+        userLabel.setForeground(TEXT_DARK);
+        userLabel.setFont(GEORGIA_PLAIN);
         gbc.gridx = 0;
         gbc.gridy = 1;
         mainPanel.add(userLabel, gbc);
 
         JTextField usernameField = new JTextField(20);
-        usernameField.setBackground(Color.WHITE);
-        usernameField.setForeground(Color.BLACK);
-        usernameField.setFont(new Font("Garamond", Font.PLAIN, 14));
+        styleTextField(usernameField);
         gbc.gridx = 1;
         gbc.gridy = 1;
         mainPanel.add(usernameField, gbc);
 
         JLabel passLabel = new JLabel("Parola:");
-        passLabel.setForeground(Color.BLACK);
-        passLabel.setFont(new Font("Garamond", Font.PLAIN, 14));
+        passLabel.setForeground(TEXT_DARK);
+        passLabel.setFont(GEORGIA_PLAIN);
         gbc.gridx = 0;
         gbc.gridy = 2;
         mainPanel.add(passLabel, gbc);
 
         JPasswordField passwordField = new JPasswordField(20);
-        passwordField.setBackground(Color.WHITE);
-        passwordField.setForeground(Color.BLACK);
-        passwordField.setFont(new Font("Garamond", Font.PLAIN, 14));
+        styleTextField(passwordField);
         gbc.gridx = 1;
         gbc.gridy = 2;
         mainPanel.add(passwordField, gbc);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 0));
-        buttonPanel.setBackground(PRIMARY_PINK);
+        buttonPanel.setBackground(CREAM_50);
 
-        JButton loginBtn = createStyledButton("Login", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Cancel", DARK_PINK, Color.BLACK);
+        JButton loginBtn = createStyledButton("Login", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Cancel", FOREST_500, TEXT_DARK);
 
         buttonPanel.add(loginBtn);
         buttonPanel.add(cancelBtn);
@@ -282,6 +319,8 @@ public class LibraryDashboard extends JFrame {
             currentToken = librarianService.login(username, password);
             if (currentToken != null) {
                 currentLibrarian = librarianService.getCurrentLibrarian(currentToken);
+                AuditLogger.getInstance().setCurrentUser(username);
+                AuditLogger.getInstance().log("AUTENTIFICARE", "Utilizatorul '" + username + "' s-a conectat cu succes");
                 loggedIn[0] = true;
                 loginDialog.dispose();
             } else {
@@ -302,11 +341,11 @@ public class LibraryDashboard extends JFrame {
     }
 
     private void setupUI() {
-        setTitle("Library Management System");
-        setSize(1300, 800);
+        setTitle("Biblioteca MANAGEMENT SYSTEM");
+        setSize(1400, 900);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-        getContentPane().setBackground(PRIMARY_PINK);
+        getContentPane().setBackground(CREAM_100);
         setLayout(new BorderLayout());
 
         JPanel sideMenu = createSideMenu();
@@ -314,7 +353,7 @@ public class LibraryDashboard extends JFrame {
 
         cardLayout = new CardLayout();
         contentPanel = new JPanel(cardLayout);
-        contentPanel.setBackground(PRIMARY_PINK);
+        contentPanel.setBackground(CREAM_50);
 
         contentPanel.add(createBooksPanel(), "books");
         contentPanel.add(createNewspapersPanel(), "newspapers");
@@ -324,61 +363,124 @@ public class LibraryDashboard extends JFrame {
         contentPanel.add(createEventsPanel(), "events");
         contentPanel.add(createStatsPanel(), "stats");
         contentPanel.add(createReceiptsPanel(), "receipts");
+        contentPanel.add(createAuditPanel(), "audit");
 
         add(contentPanel, BorderLayout.CENTER);
         add(createTopBar(), BorderLayout.NORTH);
+
+        initRefreshMediator();
     }
 
     private JPanel createSideMenu() {
         JPanel sideMenu = new JPanel();
-        sideMenu.setPreferredSize(new Dimension(200, 0));
-        sideMenu.setBackground(DARKER_PINK);
+        sideMenu.setPreferredSize(new Dimension(240, 0));
+        sideMenu.setBackground(FOREST_700);
         sideMenu.setLayout(new BoxLayout(sideMenu, BoxLayout.Y_AXIS));
+        sideMenu.setBorder(BorderFactory.createEmptyBorder(20, 10, 20, 10));
 
-        String[] menuItems = {"Carti", "Ziare", "Membri", "Imprumuturi", "Pachete Cadou", "Evenimente", "Statistici", "Chitante", "Undo", "Redo", "Delogare"};
-        String[] commandNames = {"books", "newspapers", "members", "loans", "gifts", "events", "stats", "receipts", "undo", "redo", "logout"};
+        JLabel titleLabel = new JLabel("COLECTIE");
+        titleLabel.setForeground(CREAM_300);
+        titleLabel.setFont(GEORGIA_BOLD);
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        sideMenu.add(titleLabel);
+        sideMenu.add(Box.createVerticalStrut(15));
 
-        sideMenu.add(Box.createVerticalStrut(30));
+        String[] menuItems = {"Carti", "Ziare", "OPERATIUNI", "Membri", "Imprumuturi", "Pachete Cadou", "Evenimente", "RAPOARTE", "Statistici", "Chitante", "Audit Log"};
+        String[] commandNames = {"books", "newspapers", "", "members", "loans", "gifts", "events", "", "stats", "receipts", "audit"};
 
         for (int i = 0; i < menuItems.length; i++) {
             String item = menuItems[i];
             String cmdName = commandNames[i];
-            JButton btn = createMenuButton(item, DARK_PINK, DARKER_PINK);
 
-            if (cmdName.equals("undo")) {
-                btn.addActionListener(e -> undoLastCommand());
-            } else if (cmdName.equals("redo")) {
-                btn.addActionListener(e -> redoLastCommand());
-            } else if (cmdName.equals("logout")) {
-                btn.addActionListener(e -> executeCommand(cmdName));
-            } else if (cmdName.equals("newspapers")) {
-                btn.addActionListener(e -> cardLayout.show(contentPanel, "newspapers"));
-            } else {
-                btn.addActionListener(e -> executeCommand(cmdName));
+            if (item.equals("OPERATIUNI") || item.equals("RAPOARTE")) {
+                sideMenu.add(Box.createVerticalStrut(20));
+                JLabel sectionLabel = new JLabel(item);
+                sectionLabel.setForeground(AMBER);
+                sectionLabel.setFont(GEORGIA_BOLD);
+                sectionLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+                sideMenu.add(sectionLabel);
+                sideMenu.add(Box.createVerticalStrut(10));
+                continue;
+            }
+
+            JButton btn = createMenuButton(item, FOREST_600, TEXT_DARK);
+
+            if (!cmdName.isEmpty()) {
+                if (cmdName.equals("newspapers")) {
+                    btn.addActionListener(e -> cardLayout.show(contentPanel, "newspapers"));
+                } else if (cmdName.equals("audit")) {
+                    btn.addActionListener(e -> cardLayout.show(contentPanel, "audit"));
+                } else {
+                    btn.addActionListener(e -> executeCommand(cmdName));
+                }
             }
 
             btn.setAlignmentX(Component.CENTER_ALIGNMENT);
             sideMenu.add(btn);
-            sideMenu.add(Box.createVerticalStrut(10));
+            sideMenu.add(Box.createVerticalStrut(5));
         }
 
         sideMenu.add(Box.createVerticalGlue());
 
+        JPanel undoRedoPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        undoRedoPanel.setBackground(FOREST_700);
+        undoRedoPanel.setMaximumSize(new Dimension(220, 50));
+
+        JButton undoBtn = createSmallButton("Undo", FOREST_500, TEXT_DARK);
+        JButton redoBtn = createSmallButton("Redo", FOREST_500, TEXT_DARK);
+
+        undoBtn.addActionListener(e -> undoLastCommand());
+        redoBtn.addActionListener(e -> redoLastCommand());
+
+        undoRedoPanel.add(undoBtn);
+        undoRedoPanel.add(redoBtn);
+        undoRedoPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        sideMenu.add(undoRedoPanel);
+        sideMenu.add(Box.createVerticalStrut(10));
+
+        JButton logoutBtn = createMenuButton("Delogare", FOREST_600, TEXT_DARK);
+        logoutBtn.addActionListener(e -> performLogout());
+        logoutBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        sideMenu.add(logoutBtn);
+        sideMenu.add(Box.createVerticalStrut(10));
+
         return sideMenu;
+    }
+
+    private JButton createSmallButton(String text, Color bg, Color fg) {
+        JButton btn = new JButton(text);
+        btn.setBackground(bg);
+        btn.setForeground(fg);
+        btn.setFocusPainted(false);
+        btn.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        btn.setFont(GEORGIA_PLAIN);
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btn.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseEntered(java.awt.event.MouseEvent evt) {
+                btn.setBackground(FOREST_400);
+                btn.setForeground(TEXT_DARK);
+            }
+            public void mouseExited(java.awt.event.MouseEvent evt) {
+                btn.setBackground(bg);
+                btn.setForeground(fg);
+            }
+        });
+        return btn;
     }
 
     private JPanel createTopBar() {
         JPanel topBar = new JPanel(new BorderLayout());
-        topBar.setBackground(DARK_PINK);
-        topBar.setPreferredSize(new Dimension(0, 60));
+        topBar.setBackground(FOREST_600);
+        topBar.setPreferredSize(new Dimension(0, 70));
+        topBar.setBorder(BorderFactory.createEmptyBorder(10, 25, 10, 25));
 
-        JLabel welcomeLabel = new JLabel("  Bine ai venit, " + (currentLibrarian != null ? currentLibrarian.getUserName() : "Admin") + "!");
-        welcomeLabel.setForeground(Color.BLACK);
-        welcomeLabel.setFont(new Font("Garamond", Font.BOLD, 18));
+        JLabel welcomeLabel = new JLabel("Bine ai venit, " + (currentLibrarian != null ? currentLibrarian.getUserName() : "Admin") + "!");
+        welcomeLabel.setForeground(CREAM_50);
+        welcomeLabel.setFont(GEORGIA_BIG);
 
-        JLabel dateLabel = new JLabel(LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) + "  ");
-        dateLabel.setForeground(Color.BLACK);
-        dateLabel.setFont(new Font("Garamond", Font.PLAIN, 14));
+        JLabel dateLabel = new JLabel(LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
+        dateLabel.setForeground(CREAM_200);
+        dateLabel.setFont(GEORGIA_PLAIN);
 
         topBar.add(welcomeLabel, BorderLayout.WEST);
         topBar.add(dateLabel, BorderLayout.EAST);
@@ -392,13 +494,12 @@ public class LibraryDashboard extends JFrame {
         btn.setForeground(fg);
         btn.setFocusPainted(false);
         btn.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
-        btn.setFont(new Font("Garamond", Font.BOLD, 12));
+        btn.setFont(GEORGIA_BOLD);
         btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btn.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseEntered(java.awt.event.MouseEvent evt) {
                 btn.setBackground(bg.darker());
             }
-
             public void mouseExited(java.awt.event.MouseEvent evt) {
                 btn.setBackground(bg);
             }
@@ -408,40 +509,147 @@ public class LibraryDashboard extends JFrame {
 
     private JButton createMenuButton(String text, Color bg, Color fg) {
         JButton btn = new JButton(text);
-        btn.setMaximumSize(new Dimension(180, 45));
+        btn.setMaximumSize(new Dimension(200, 40));
+        btn.setPreferredSize(new Dimension(200, 40));
         btn.setBackground(bg);
         btn.setForeground(fg);
         btn.setFocusPainted(false);
-        btn.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-        btn.setFont(new Font("Garamond", Font.BOLD, 14));
+        btn.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
+        btn.setFont(GEORGIA_PLAIN);
         btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btn.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseEntered(java.awt.event.MouseEvent evt) {
-                btn.setBackground(bg.darker());
+                btn.setBackground(FOREST_500);
+                btn.setForeground(CREAM_50);
             }
-
             public void mouseExited(java.awt.event.MouseEvent evt) {
                 btn.setBackground(bg);
+                btn.setForeground(fg);
             }
         });
         return btn;
     }
 
+    private JPanel createBooksStatsPanel() {
+        JPanel statsPanel = new JPanel(new GridLayout(1, 3, 15, 0));
+        statsPanel.setBackground(CREAM_50);
+        statsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 15, 10));
+
+        int totalBooks = bookService.findAllBooksLegacy().size();
+        int activeLoans = loanService.getActiveLoans().size();
+        int availableStock = 0;
+        for (Book book : bookService.findAllBooksLegacy()) {
+            Stock stock = stockService.getStock(book.getIsbn());
+            if (stock != null) {
+                availableStock += stock.getAvailableQuantity();
+            }
+        }
+
+        statsPanel.add(createStatCard("TOTAL CARTI", String.valueOf(totalBooks), "12 adaugate luna aceasta", "5 scadente azi"));
+        statsPanel.add(createStatCard("IMPRUMUTURI ACTIVE", String.valueOf(activeLoans), "3 inregistrati recent", ""));
+        statsPanel.add(createStatCard("DISPONIBILE STOC", String.valueOf(availableStock), "din " + totalBooks + " titluri", ""));
+
+        return statsPanel;
+    }
+
+    private JPanel createNewspapersStatsPanel() {
+        JPanel statsPanel = new JPanel(new GridLayout(1, 2, 15, 0));
+        statsPanel.setBackground(CREAM_50);
+        statsPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 15, 10));
+
+        int totalNewspapers = newspaperService.getAllItems().size();
+        int availableStock = totalNewspapers;
+
+        statsPanel.add(createStatCard("TOTAL ZIARE", String.valueOf(totalNewspapers), "3 adaugate luna aceasta", ""));
+        statsPanel.add(createStatCard("DISPONIBILE STOC", String.valueOf(availableStock), "din " + totalNewspapers + " titluri", ""));
+
+        return statsPanel;
+    }
+
+    private JPanel createStatCard(String title, String value, String subtitle1, String subtitle2) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(CREAM_100);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(CREAM_200, 1),
+                BorderFactory.createEmptyBorder(15, 15, 15, 15)
+        ));
+
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setFont(GEORGIA_BOLD);
+        titleLabel.setForeground(TEXT_MUTED);
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel valueLabel = new JLabel(value);
+        valueLabel.setFont(new Font("Georgia", Font.BOLD, 32));
+        valueLabel.setForeground(FOREST_700);
+        valueLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel sub1Label = new JLabel(subtitle1);
+        sub1Label.setFont(GEORGIA_ITALIC);
+        sub1Label.setForeground(TEXT_MUTED);
+        sub1Label.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        card.add(titleLabel);
+        card.add(Box.createVerticalStrut(10));
+        card.add(valueLabel);
+        card.add(Box.createVerticalStrut(5));
+        card.add(sub1Label);
+
+        if (!subtitle2.isEmpty()) {
+            JLabel sub2Label = new JLabel(subtitle2);
+            sub2Label.setFont(GEORGIA_ITALIC);
+            sub2Label.setForeground(TEXT_MUTED);
+            sub2Label.setAlignmentX(Component.CENTER_ALIGNMENT);
+            card.add(sub2Label);
+        }
+
+        return card;
+    }
+
     private JPanel createBooksPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
-        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        panel.setBackground(CREAM_50);
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 15, 15, 15));
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton addBookBtn = createStyledButton("Adauga Carte", DARK_PINK, Color.BLACK);
-        JButton deleteBookBtn = createStyledButton("Sterge Carte", DARK_PINK, Color.BLACK);
-        JButton setRestrictionBtn = createStyledButton("Set Restrictii", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        panel.add(createBooksStatsPanel(), BorderLayout.NORTH);
+
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        searchPanel.setBackground(CREAM_50);
+        JLabel searchLabel = new JLabel("Cauta titlu, autor...");
+        searchLabel.setFont(GEORGIA_ITALIC);
+        searchLabel.setForeground(TEXT_DARK);
+        JTextField searchField = new JTextField(30);
+        styleTextField(searchField);
+        JButton searchBtn = createStyledButton("Cauta", FOREST_400, TEXT_DARK);
+        searchPanel.add(searchLabel);
+        searchPanel.add(searchField);
+        searchPanel.add(searchBtn);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        buttonPanel.setBackground(CREAM_50);
+        JButton addBookBtn = createStyledButton("Adauga Carte", FOREST_500, TEXT_DARK);
+        JButton deleteBookBtn = createStyledButton("Sterge Carte", FOREST_500, TEXT_DARK);
+        JButton setRestrictionBtn = createStyledButton("Set Restrictii", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
+        JButton availabilityBtn = createStyledButton("Disponibilitate", AMBER, TEXT_DARK);
+        JButton sortByTitleBtn = createStyledButton("Sorteaza dupa Titlu", FOREST_400, TEXT_DARK);
+        JButton sortByAuthorBtn = createStyledButton("Sorteaza dupa Autor", FOREST_400, TEXT_DARK);
+        JButton sortByYearBtn = createStyledButton("Sorteaza dupa An", FOREST_400, TEXT_DARK);
+
         buttonPanel.add(addBookBtn);
         buttonPanel.add(deleteBookBtn);
         buttonPanel.add(setRestrictionBtn);
         buttonPanel.add(refreshBtn);
+        buttonPanel.add(availabilityBtn);
+        buttonPanel.add(sortByTitleBtn);
+        buttonPanel.add(sortByAuthorBtn);
+        buttonPanel.add(sortByYearBtn);
+
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setBackground(CREAM_50);
+        topPanel.add(searchPanel, BorderLayout.NORTH);
+        topPanel.add(buttonPanel, BorderLayout.SOUTH);
 
         JTable table = new JTable();
         table.setModel(new BooksTableModel());
@@ -449,52 +657,481 @@ public class LibraryDashboard extends JFrame {
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
         JScrollPane scrollPane = new JScrollPane(table);
-        panel.add(buttonPanel, BorderLayout.NORTH);
-        panel.add(scrollPane, BorderLayout.CENTER);
+        scrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(CREAM_200),
+                "Catalog carti",
+                TitledBorder.LEFT, TitledBorder.TOP,
+                GEORGIA_BOLD, FOREST_600
+        ));
+
+        // Create details panel with nicer styling
+        JPanel detailsPanel = new JPanel(new BorderLayout());
+        detailsPanel.setBackground(CREAM_50);
+        detailsPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, CREAM_200),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        detailsPanel.setVisible(false);
+
+        JTextArea detailsArea = new JTextArea();
+        detailsArea.setEditable(false);
+        detailsArea.setFont(GEORGIA_PLAIN);
+        detailsArea.setBackground(CREAM_100);
+        detailsArea.setForeground(TEXT_DARK);
+        detailsArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JScrollPane detailsScroll = new JScrollPane(detailsArea);
+        detailsScroll.setBorder(BorderFactory.createLineBorder(CREAM_200));
+        detailsScroll.getViewport().setBackground(CREAM_100);
+
+        JLabel detailsTitle = new JLabel("DETALII CARTE");
+        detailsTitle.setFont(GEORGIA_BOLD);
+        detailsTitle.setForeground(FOREST_600);
+        detailsTitle.setBorder(BorderFactory.createEmptyBorder(0, 5, 5, 0));
+
+        detailsPanel.add(detailsTitle, BorderLayout.NORTH);
+        detailsPanel.add(detailsScroll, BorderLayout.CENTER);
+
+        // Use JSplitPane for resizable details panel
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scrollPane, detailsPanel);
+        splitPane.setBackground(CREAM_50);
+        splitPane.setResizeWeight(0.7);
+        splitPane.setDividerSize(8);
+        splitPane.setDividerLocation(500);
+
+        panel.add(topPanel, BorderLayout.NORTH);
+        panel.add(splitPane, BorderLayout.CENTER);
+
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow != -1) {
+                    showBookDetails(selectedRow, table, detailsArea);
+                    detailsPanel.setVisible(true);
+                } else {
+                    detailsPanel.setVisible(false);
+                }
+            }
+        });
 
         refreshBtn.addActionListener(e -> ((BooksTableModel) table.getModel()).refresh());
         addBookBtn.addActionListener(e -> showAddBookDialog(table));
         deleteBookBtn.addActionListener(e -> showDeleteBookDialog(table));
         setRestrictionBtn.addActionListener(e -> showSetRestrictionDialog(table));
+        availabilityBtn.addActionListener(e -> showAvailabilityDialog(table));
+
+        sortByTitleBtn.addActionListener(e -> refreshBooksWithIterator(table, "title"));
+        sortByAuthorBtn.addActionListener(e -> refreshBooksWithIterator(table, "author"));
+        sortByYearBtn.addActionListener(e -> refreshBooksWithIterator(table, "year"));
+
+        searchBtn.addActionListener(e -> {
+            String searchTerm = searchField.getText().toLowerCase();
+            if (searchTerm.isEmpty()) {
+                ((BooksTableModel) table.getModel()).refresh();
+            } else {
+                List<IBorrowable> filtered = new ArrayList<>();
+                for (IBorrowable item : bookService.findAllBooks()) {
+                    Book book = getBookFromItem(item);
+                    if (book != null && (book.getTitle().toLowerCase().contains(searchTerm) ||
+                            book.getAuthor().getName().toLowerCase().contains(searchTerm))) {
+                        filtered.add(item);
+                    }
+                }
+                ((BooksTableModel) table.getModel()).updateWithFilteredBooks(filtered);
+            }
+        });
 
         return panel;
     }
 
+    private void showBookDetails(int row, JTable table, JTextArea detailsArea) {
+        int bookId = (int) table.getValueAt(row, 0);
+        String title = (String) table.getValueAt(row, 1);
+        String author = (String) table.getValueAt(row, 2);
+        int year = (int) table.getValueAt(row, 3);
+        String price = (String) table.getValueAt(row, 4);
+
+        Book book = findBookById(bookId);
+
+        StringBuilder details = new StringBuilder();
+        details.append("Titlu: ").append(title).append("\n");
+        details.append("Autor: ").append(author).append("\n");
+        details.append("An publicare: ").append(year).append("\n");
+        details.append("Pret: ").append(price).append("\n");
+        details.append("--------------------------------------------------\n");
+
+        if (book != null) {
+            details.append("ISBN: ").append(book.getIsbn()).append("\n");
+            details.append("Editura: ").append(book.getPublisher()).append("\n");
+            details.append("Pagini: ").append(book.getPageCount()).append("\n");
+
+            if (book instanceof FantasyBook) {
+                details.append("Tip: Fantasy\n");
+            } else if (book instanceof RomanceBook) {
+                RomanceBook rb = (RomanceBook) book;
+                details.append("Tip: Romance\n");
+                details.append("Nivel romance: ").append(rb.getRomanceLevel()).append("/5\n");
+                details.append("Tropi: ").append(rb.getTropes()).append("\n");
+            }
+
+            Stock stock = stockService.getStock(book.getIsbn());
+            if (stock != null) {
+                int borrowed = 0;
+                for (Loan loan : loanService.getActiveLoans()) {
+                    Book loanBook = loan.getBook();
+                    if (loanBook != null && loanBook.getItemId() == bookId) {
+                        borrowed++;
+                    }
+                }
+
+                int total = stock.getQuantity();
+                int availableCorrect = total - borrowed;
+
+                details.append("\n--- STOC ---\n");
+                details.append("Total exemplare: ").append(total).append("\n");
+                details.append("Imprumutate: ").append(borrowed).append("\n");
+                details.append("Disponibile: ").append(availableCorrect).append("\n");
+            }
+        }
+
+        detailsArea.setText(details.toString());
+        detailsArea.setCaretPosition(0);
+    }
+
+    private Book findBookById(int id) {
+        for (Book b : bookService.findAllBooksLegacy()) {
+            if (b.getItemId() == id) return b;
+        }
+        return null;
+    }
+
+    private void refreshBooksWithIterator(JTable table, String sortType) {
+        List<Book> books = bookService.findAllBooksLegacy();
+
+        if (books.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Nu exista carti in biblioteca!", "Eroare", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        BookCollection bookCollection = new BookCollection();
+        for (Book book : books) {
+            bookCollection.addBook(book);
+        }
+
+        BookIterator iterator = null;
+        String sortMessage = "";
+
+        switch (sortType) {
+            case "title":
+                iterator = bookCollection.createTitleIterator();
+                sortMessage = "sortate dupa TITLU";
+                break;
+            case "author":
+                iterator = bookCollection.createAuthorIterator();
+                sortMessage = "sortate dupa AUTOR";
+                break;
+            case "year":
+                iterator = bookCollection.createYearIterator();
+                sortMessage = "sortate dupa AN";
+                break;
+        }
+
+        if (iterator == null) return;
+
+        List<Book> sortedBooks = new ArrayList<>();
+        while (iterator.hasNext()) {
+            sortedBooks.add(iterator.next());
+        }
+
+        BooksTableModel model = (BooksTableModel) table.getModel();
+        model.updateWithSortedBooks(sortedBooks);
+
+        JOptionPane.showMessageDialog(this,
+                "Cartile au fost " + sortMessage + "\n" +
+                        "Numar total: " + sortedBooks.size() + " carti",
+                "Iterator Pattern",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void showAvailabilityDialog(JTable table) {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this,
+                    "Te rugam sa selectezi o carte pentru a vedea disponibilitatea!",
+                    "Nicio selectie",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        int bookId = (int) table.getValueAt(selectedRow, 0);
+        Book book = findBookById(bookId);
+        if (book == null) return;
+
+        Stock stock = stockService.getStock(book.getIsbn());
+
+        int borrowed = 0;
+        for (Loan loan : loanService.getActiveLoans()) {
+            Book loanBook = loan.getBook();
+            if (loanBook != null && loanBook.getItemId() == bookId) {
+                borrowed++;
+            }
+        }
+
+        if (stock != null) {
+            int total = stock.getQuantity();
+            int available = stock.getAvailableQuantity();
+            int reserved = stock.getReservedQuantity();
+
+            String message = String.format(
+                    "DETALII CARTE:\n" +
+                            "Titlu: %s\n" +
+                            "Autor: %s\n\n" +
+                            "STOC:\n" +
+                            "Total carti: %d\n" +
+                            "Disponibile: %d\n" +
+                            "Rezervate: %d\n" +
+                            "Imprumutate: %d",
+                    book.getTitle(),
+                    book.getAuthor().getName(),
+                    total,
+                    available,
+                    reserved,
+                    borrowed
+            );
+
+            JOptionPane.showMessageDialog(this, message, "Disponibilitate Carte", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            JOptionPane.showMessageDialog(this, "Nu exista stoc pentru aceasta carte!", "Eroare", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     private JPanel createNewspapersPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
-        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        panel.setBackground(CREAM_50);
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 15, 15, 15));
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton addNewspaperBtn = createStyledButton("Adauga Ziar", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        panel.add(createNewspapersStatsPanel(), BorderLayout.NORTH);
+
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        searchPanel.setBackground(CREAM_50);
+        JLabel searchLabel = new JLabel("Cauta dupa titlu, publicatie...");
+        searchLabel.setFont(GEORGIA_ITALIC);
+        searchLabel.setForeground(TEXT_DARK);
+        JTextField searchField = new JTextField(30);
+        styleTextField(searchField);
+        JButton searchBtn = createStyledButton("Cauta", FOREST_400, TEXT_DARK);
+        searchPanel.add(searchLabel);
+        searchPanel.add(searchField);
+        searchPanel.add(searchBtn);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        buttonPanel.setBackground(CREAM_50);
+        JButton addNewspaperBtn = createStyledButton("Adauga Ziar", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
+        JButton sortByTitleBtn = createStyledButton("Sorteaza dupa Titlu", FOREST_400, TEXT_DARK);
+        JButton sortByPublisherBtn = createStyledButton("Sorteaza dupa Editura", FOREST_400, TEXT_DARK);
+
         buttonPanel.add(addNewspaperBtn);
         buttonPanel.add(refreshBtn);
+        buttonPanel.add(sortByTitleBtn);
+        buttonPanel.add(sortByPublisherBtn);
+
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setBackground(CREAM_50);
+        topPanel.add(searchPanel, BorderLayout.NORTH);
+        topPanel.add(buttonPanel, BorderLayout.SOUTH);
 
         JTable table = new JTable();
         table.setModel(new NewspapersTableModel());
         styleTable(table);
 
         JScrollPane scrollPane = new JScrollPane(table);
-        panel.add(buttonPanel, BorderLayout.NORTH);
-        panel.add(scrollPane, BorderLayout.CENTER);
+        scrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(CREAM_200),
+                "Catalog ziare",
+                TitledBorder.LEFT, TitledBorder.TOP,
+                GEORGIA_BOLD, FOREST_600
+        ));
+
+        // Create details panel with nicer styling
+        JPanel detailsPanel = new JPanel(new BorderLayout());
+        detailsPanel.setBackground(CREAM_50);
+        detailsPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, CREAM_200),
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        detailsPanel.setVisible(false);
+
+        JTextArea detailsArea = new JTextArea();
+        detailsArea.setEditable(false);
+        detailsArea.setFont(GEORGIA_PLAIN);
+        detailsArea.setBackground(CREAM_100);
+        detailsArea.setForeground(TEXT_DARK);
+        detailsArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JScrollPane detailsScroll = new JScrollPane(detailsArea);
+        detailsScroll.setBorder(BorderFactory.createLineBorder(CREAM_200));
+        detailsScroll.getViewport().setBackground(CREAM_100);
+
+        JLabel detailsTitle = new JLabel("DETALII ZIAR");
+        detailsTitle.setFont(GEORGIA_BOLD);
+        detailsTitle.setForeground(FOREST_600);
+        detailsTitle.setBorder(BorderFactory.createEmptyBorder(0, 5, 5, 0));
+
+        detailsPanel.add(detailsTitle, BorderLayout.NORTH);
+        detailsPanel.add(detailsScroll, BorderLayout.CENTER);
+
+        // Use JSplitPane for resizable details panel
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, scrollPane, detailsPanel);
+        splitPane.setBackground(CREAM_50);
+        splitPane.setResizeWeight(0.7);
+        splitPane.setDividerSize(8);
+        splitPane.setDividerLocation(500);
+
+        panel.add(topPanel, BorderLayout.NORTH);
+        panel.add(splitPane, BorderLayout.CENTER);
+
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                int selectedRow = table.getSelectedRow();
+                if (selectedRow != -1) {
+                    showNewspaperDetails(selectedRow, table, detailsArea);
+                    detailsPanel.setVisible(true);
+                } else {
+                    detailsPanel.setVisible(false);
+                }
+            }
+        });
 
         refreshBtn.addActionListener(e -> ((NewspapersTableModel) table.getModel()).refresh());
         addNewspaperBtn.addActionListener(e -> showAddNewspaperDialog(table));
+        sortByTitleBtn.addActionListener(e -> refreshNewspapersWithIterator(table, "title"));
+        sortByPublisherBtn.addActionListener(e -> refreshNewspapersWithIterator(table, "publisher"));
+
+        searchBtn.addActionListener(e -> {
+            String term = searchField.getText().toLowerCase();
+            if (term.isEmpty()) {
+                ((NewspapersTableModel) table.getModel()).refresh();
+            } else {
+                List<Newspaper> filtered = newspaperService.getAllItems().stream()
+                        .filter(item -> item instanceof Newspaper)
+                        .map(item -> (Newspaper) item)
+                        .filter(n -> n.getTitle().toLowerCase().contains(term) ||
+                                n.getPublisher().getName().toLowerCase().contains(term))
+                        .toList();
+                ((NewspapersTableModel) table.getModel()).updateWithSortedNewspapers(filtered);
+            }
+        });
 
         return panel;
     }
 
+    private void showNewspaperDetails(int row, JTable table, JTextArea detailsArea) {
+        int id = (int) table.getValueAt(row, 0);
+        String title = (String) table.getValueAt(row, 1);
+        String type = (String) table.getValueAt(row, 2);
+        String publisher = (String) table.getValueAt(row, 3);
+        String issn = (String) table.getValueAt(row, 4);
+
+        StringBuilder details = new StringBuilder();
+        details.append("Titlu: ").append(title).append("\n");
+        details.append("Tip: ").append(type).append("\n");
+        details.append("Editura: ").append(publisher).append("\n");
+        details.append("ISSN: ").append(issn).append("\n");
+        details.append("--------------------------------------------------\n");
+
+        Newspaper newspaper = findNewspaperById(id);
+        if (newspaper != null) {
+            details.append("An publicare: ").append(newspaper.getPublicationDate()).append("\n");
+            details.append("Numar pagini: ").append(newspaper.getPageCount()).append("\n");
+
+            if (newspaper instanceof LocalNewspaper) {
+                LocalNewspaper local = (LocalNewspaper) newspaper;
+                details.append("\n--- INFORMATII LOCALE ---\n");
+                details.append("Oras: ").append(local.getCity()).append("\n");
+                details.append("Regiune: ").append(local.getRegion()).append("\n");
+            } else if (newspaper instanceof NationalNewspaper) {
+                NationalNewspaper national = (NationalNewspaper) newspaper;
+                details.append("\n--- INFORMATII NATIONALE ---\n");
+                details.append("Arie distributie: ").append(national.getDistributionArea()).append("\n");
+                details.append("Orientare politica: ").append(national.getPoliticalOrientation()).append("\n");
+            }
+
+            Stock stock = stockService.getStock(newspaper.getIssn());
+            if (stock != null) {
+                details.append("\n--- STOC ---\n");
+                details.append("Total exemplare: ").append(stock.getQuantity()).append("\n");
+                details.append("Disponibile: ").append(stock.getAvailableQuantity()).append("\n");
+            }
+        }
+
+        detailsArea.setText(details.toString());
+        detailsArea.setCaretPosition(0);
+    }
+
+    private Newspaper findNewspaperById(int id) {
+        for (LibraryItem item : newspaperService.getAllItems()) {
+            if (item instanceof Newspaper && ((Newspaper) item).getItemId() == id) {
+                return (Newspaper) item;
+            }
+        }
+        return null;
+    }
+
+    private void refreshNewspapersWithIterator(JTable table, String sortType) {
+        List<Newspaper> newspapers = newspaperService.getAllItems().stream()
+                .filter(item -> item instanceof Newspaper)
+                .map(item -> (Newspaper) item)
+                .toList();
+
+        if (newspapers.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Nu exista ziare in biblioteca", "Eroare", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        NewspaperCollection newspaperCollection = new NewspaperCollection();
+        for (Newspaper newspaper : newspapers) {
+            newspaperCollection.addNewspaper(newspaper);
+        }
+
+        NewspaperIterator iterator = null;
+        String sortMessage = "";
+
+        switch (sortType) {
+            case "title":
+                iterator = newspaperCollection.createTitleIterator();
+                sortMessage = "sortate dupa TITLU";
+                break;
+            case "publisher":
+                iterator = newspaperCollection.createPublisherIterator();
+                sortMessage = "sortate dupa EDITURA";
+                break;
+        }
+
+        if (iterator == null) return;
+
+        List<Newspaper> sortedNewspapers = new ArrayList<>();
+        while (iterator.hasNext()) {
+            sortedNewspapers.add(iterator.next());
+        }
+
+        NewspapersTableModel model = (NewspapersTableModel) table.getModel();
+        model.updateWithSortedNewspapers(sortedNewspapers);
+
+        JOptionPane.showMessageDialog(this,
+                "Ziarele au fost " + sortMessage + "\n" +
+                        "Numar total: " + sortedNewspapers.size() + " ziare",
+                "Iterator",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
     private JPanel createMembersPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton addMemberBtn = createStyledButton("Adauga Membru", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton addMemberBtn = createStyledButton("Adauga Membru", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
         buttonPanel.add(addMemberBtn);
         buttonPanel.add(refreshBtn);
 
@@ -552,13 +1189,10 @@ public class LibraryDashboard extends JFrame {
         private String getLoanRestrictions(Loan loan) {
             IBorrowable item = loan.getItem();
             if (item instanceof ReadingRoomDecorator) {
-                ReadingRoomDecorator rr = (ReadingRoomDecorator) item;
-                return "Doar in sala (" + rr.getRoom() + ")";
-            } else if (item instanceof RestrictedAccessDecorator) {
-                RestrictedAccessDecorator ra = (RestrictedAccessDecorator) item;
+                return "Doar in sala";
+            } else if (item instanceof RestrictedAccessDecorator ra) {
                 return "Acces: " + ra.getRequiredLevel();
-            } else if (item instanceof ApprovalRequiredDecorator) {
-                ApprovalRequiredDecorator ar = (ApprovalRequiredDecorator) item;
+            } else if (item instanceof ApprovalRequiredDecorator ar) {
                 return "Aprobare: " + (ar.isApproved() ? "Aprobat" : "Necesara");
             }
             return "Fara restrictii";
@@ -606,122 +1240,19 @@ public class LibraryDashboard extends JFrame {
         public String getColumnName(int col) { return columns[col]; }
     }
 
-    private void showReturnLoanDialog(JTable activeTable, JTable historyTable) {
-        int selectedRow = activeTable.getSelectedRow();
-        if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(this, "Selectati un imprumut pentru returnare!", "Eroare", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        int loanId = (int) activeTable.getValueAt(selectedRow, 0);
-        Loan loan = loanService.getLoanById(loanId);
-
-        if (loan == null) {
-            JOptionPane.showMessageDialog(this, "Imprumutul nu a fost gasit!", "Eroare", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-
-        Book book = loan.getBook();
-        Member member = loan.getUser();
-
-        LocalDate returnDate = LocalDate.now();
-        int daysLate = 0;
-        double latePenalty = 0;
-
-        if (returnDate.isAfter(loan.getReturnDate())) {
-            daysLate = (int) java.time.temporal.ChronoUnit.DAYS.between(loan.getReturnDate(), returnDate);
-            latePenalty = daysLate * 1.0;
-        }
-
-        String[] damageOptions = {"In stare buna", "Usor deteriorata (20% din pret)", "Foarte deteriorata (50% din pret)", "Pierduta (100% din pret)"};
-        int damageChoice = JOptionPane.showOptionDialog(this,
-                "Selectati starea cartii:\n\n" +
-                        "Carte: " + book.getTitle() + "\n" +
-                        "Pret carte: " + book.getPrice() + " lei\n" +
-                        "Zile intarziere: " + daysLate + "\n" +
-                        "Penalizare intarziere: " + latePenalty + " lei",
-                "Stare Carte",
-                JOptionPane.DEFAULT_OPTION,
-                JOptionPane.QUESTION_MESSAGE,
-                null, damageOptions, damageOptions[0]);
-
-        double damagePenalty = 0;
-        String damageDescription = "";
-
-        switch (damageChoice) {
-            case 1:
-                damagePenalty = book.getPrice() * 0.20;
-                damageDescription = "Usor deteriorata - 20% din pret";
-                break;
-            case 2:
-                damagePenalty = book.getPrice() * 0.50;
-                damageDescription = "Foarte deteriorata - 50% din pret";
-                break;
-            case 3:
-                damagePenalty = book.getPrice();
-                damageDescription = "Pierduta - 100% din pret";
-                break;
-            default:
-                damageDescription = "In stare buna";
-        }
-
-        double totalPenalty = latePenalty + damagePenalty;
-
-        if (totalPenalty > 0) {
-            String[] paymentOptions = {"Da, s-a platit", "Nu, nu s-a platit"};
-            int paymentChoice = JOptionPane.showOptionDialog(this,
-                    "=== DETALII PLATA ===\n\n" +
-                            "Carte: " + book.getTitle() + "\n" +
-                            "Pret carte: " + book.getPrice() + " lei\n\n" +
-                            "Penalizare intarziere (" + daysLate + " zile): " + latePenalty + " lei\n" +
-                            "Penalizare dauna: " + damagePenalty + " lei (" + damageDescription + ")\n" +
-                            "TOTAL DE PLATA: " + totalPenalty + " lei\n\n" +
-                            "S-a primit plata?",
-                    "Confirmare Plata",
-                    JOptionPane.YES_NO_OPTION,
-                    JOptionPane.QUESTION_MESSAGE,
-                    null, paymentOptions, paymentOptions[0]);
-
-            if (paymentChoice == 1) {
-                JOptionPane.showMessageDialog(this, "Returnarea nu poate fi finalizata fara plata!", "Eroare", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            paymentService.processPayment(totalPenalty, "CASH",
-                    "Returnare - " + book.getTitle() + " - " + damageDescription + " - intarziere " + daysLate + " zile",
-                    member.getUserId());
-        }
-
-        loan.close();
-        stockService.increaseStock(book.getIsbn(), 1);
-
-        receiptMenu.printReturnReceipt(loan, returnDate, daysLate, totalPenalty, totalPenalty > 0);
-
-        ((ActiveLoansTableModel) activeTable.getModel()).refresh();
-        ((ClosedLoansTableModel) historyTable.getModel()).refresh();
-
-        JOptionPane.showMessageDialog(this,
-                "Returnare procesata cu succes!\n\n" +
-                        "Carte: " + book.getTitle() + "\n" +
-                        "Membru: " + member.getUserName() + "\n" +
-                        "Total plata: " + totalPenalty + " lei",
-                "Succes",
-                JOptionPane.INFORMATION_MESSAGE);
-    }
-
     private JPanel createLoansPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton createLoanBtn = createStyledButton("Creaza Imprumut", DARK_PINK, Color.BLACK);
-        JButton returnLoanBtn = createStyledButton("Returneaza", DARK_PINK, Color.BLACK);
-        JButton renewLoanBtn = createStyledButton("Prelungeste", DARK_PINK, Color.BLACK);
-        JButton undoBtn = createStyledButton("Undo Ultimul Imprumut", DARK_PINK, Color.BLACK);
-        JButton showHistoryBtn = createStyledButton("Istoric Imprumuturi", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton createLoanBtn = createStyledButton("Creaza Imprumut", FOREST_500, TEXT_DARK);
+        JButton returnLoanBtn = createStyledButton("Returneaza", FOREST_500, TEXT_DARK);
+        JButton renewLoanBtn = createStyledButton("Prelungeste", FOREST_500, TEXT_DARK);
+        JButton undoBtn = createStyledButton("Undo Ultimul Imprumut", FOREST_500, TEXT_DARK);
+        JButton showHistoryBtn = createStyledButton("Istoric Imprumuturi", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
         buttonPanel.add(createLoanBtn);
         buttonPanel.add(returnLoanBtn);
         buttonPanel.add(renewLoanBtn);
@@ -746,7 +1277,7 @@ public class LibraryDashboard extends JFrame {
         historyScrollPane.setVisible(false);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, activeScrollPane, historyScrollPane);
-        splitPane.setBackground(PRIMARY_PINK);
+        splitPane.setBackground(CREAM_50);
         splitPane.setDividerLocation(300);
         splitPane.setResizeWeight(0.5);
 
@@ -784,7 +1315,7 @@ public class LibraryDashboard extends JFrame {
                 if (confirm == JOptionPane.YES_OPTION) {
                     if (loanCaretaker.undo()) {
                         ((ActiveLoansTableModel) activeTable.getModel()).refresh();
-                        JOptionPane.showMessageDialog(this, "Ultimul imprumut a fost anulat cu succes!", "Undo", JOptionPane.INFORMATION_MESSAGE);
+                        JOptionPane.showMessageDialog(this, "Ultimul imprumut a fost anulat cu succes", "Undo", JOptionPane.INFORMATION_MESSAGE);
                     } else {
                         JOptionPane.showMessageDialog(this, "Nu s-a putut face undo!", "Eroare", JOptionPane.ERROR_MESSAGE);
                     }
@@ -799,14 +1330,14 @@ public class LibraryDashboard extends JFrame {
 
     private JPanel createGiftsPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton createStandardBtn = createStyledButton("Pachet Standard", DARK_PINK, Color.BLACK);
-        JButton createPremiumBtn = createStyledButton("Pachet Premium", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton createStandardBtn = createStyledButton("Pachet Standard", FOREST_500, TEXT_DARK);
+        JButton createPremiumBtn = createStyledButton("Pachet Premium", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
         buttonPanel.add(createStandardBtn);
         buttonPanel.add(createPremiumBtn);
         buttonPanel.add(refreshBtn);
@@ -828,15 +1359,15 @@ public class LibraryDashboard extends JFrame {
 
     private JPanel createReceiptsPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
+        buttonPanel.setBackground(CREAM_50);
 
-        JButton processReturnBtn = createStyledButton("Procesare Returnare", DARK_PINK, Color.BLACK);
-        JButton showHistoryBtn = createStyledButton("Istoric Chitante", DARK_PINK, Color.BLACK);
-        JButton clearHistoryBtn = createStyledButton("Goleste Istoric", DARK_PINK, Color.BLACK);
+        JButton processReturnBtn = createStyledButton("Procesare Returnare", FOREST_500, TEXT_DARK);
+        JButton showHistoryBtn = createStyledButton("Istoric Chitante", FOREST_500, TEXT_DARK);
+        JButton clearHistoryBtn = createStyledButton("Goleste Istoric", FOREST_500, TEXT_DARK);
 
         buttonPanel.add(processReturnBtn);
         buttonPanel.add(showHistoryBtn);
@@ -845,8 +1376,8 @@ public class LibraryDashboard extends JFrame {
         JTextArea receiptArea = new JTextArea();
         receiptArea.setEditable(false);
         receiptArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        receiptArea.setBackground(LIGHT_PINK);
-        receiptArea.setForeground(Color.BLACK);
+        receiptArea.setBackground(CREAM_100);
+        receiptArea.setForeground(TEXT_DARK);
 
         JScrollPane scrollPane = new JScrollPane(receiptArea);
         panel.add(buttonPanel, BorderLayout.NORTH);
@@ -902,16 +1433,16 @@ public class LibraryDashboard extends JFrame {
 
     private JPanel createEventsPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton addEventBtn = createStyledButton("Adauga Eveniment", DARK_PINK, Color.BLACK);
-        JButton addGroupBtn = createStyledButton("Adauga Grup", DARK_PINK, Color.BLACK);
-        JButton addToGroupBtn = createStyledButton("Adauga Eveniment in Grup", DARK_PINK, Color.BLACK);
-        JButton registerEventBtn = createStyledButton("Inregistrare Eveniment", DARK_PINK, Color.BLACK);
-        JButton refreshBtn = createStyledButton("Refresh", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton addEventBtn = createStyledButton("Adauga Eveniment", FOREST_500, TEXT_DARK);
+        JButton addGroupBtn = createStyledButton("Adauga Grup", FOREST_500, TEXT_DARK);
+        JButton addToGroupBtn = createStyledButton("Adauga Eveniment in Grup", FOREST_500, TEXT_DARK);
+        JButton registerEventBtn = createStyledButton("Inregistrare Eveniment", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
         buttonPanel.add(addEventBtn);
         buttonPanel.add(addGroupBtn);
         buttonPanel.add(addToGroupBtn);
@@ -919,7 +1450,7 @@ public class LibraryDashboard extends JFrame {
         buttonPanel.add(refreshBtn);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setBackground(PRIMARY_PINK);
+        splitPane.setBackground(CREAM_50);
         splitPane.setDividerLocation(600);
 
         JTable eventsTable = new JTable();
@@ -934,9 +1465,9 @@ public class LibraryDashboard extends JFrame {
         JTree eventTree = new JTree(treeModel);
         eventTree.setRootVisible(true);
         eventTree.setShowsRootHandles(true);
-        eventTree.setBackground(LIGHT_PINK);
-        eventTree.setForeground(Color.BLACK);
-        eventTree.setFont(new Font("Garamond", Font.PLAIN, 12));
+        eventTree.setBackground(CREAM_100);
+        eventTree.setForeground(TEXT_DARK);
+        eventTree.setFont(GEORGIA_PLAIN);
         JScrollPane treeScrollPane = new JScrollPane(eventTree);
         treeScrollPane.setBorder(BorderFactory.createTitledBorder("Grupuri Evenimente"));
 
@@ -963,31 +1494,182 @@ public class LibraryDashboard extends JFrame {
 
     private JPanel createStatsPanel() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(PRIMARY_PINK);
+        panel.setBackground(CREAM_50);
         panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        JPanel buttonPanel = new JPanel(new GridLayout(2, 4, 10, 10));
+        buttonPanel.setBackground(CREAM_50);
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        JButton fullStatsBtn = createStyledButton("Statistici Complete", FOREST_500, TEXT_DARK);
+        JButton bookStatsBtn = createStyledButton("Statistici Carti", FOREST_500, TEXT_DARK);
+        JButton loanStatsBtn = createStyledButton("Statistici Imprumuturi", FOREST_500, TEXT_DARK);
+        JButton memberStatsBtn = createStyledButton("Statistici Membri", FOREST_500, TEXT_DARK);
+        JButton newspaperStatsBtn = createStyledButton("Statistici Ziare", FOREST_500, TEXT_DARK);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
+        JButton exportStatsBtn = createStyledButton("Exporta Statistici", AMBER, TEXT_DARK);
+        JButton visitorDemoBtn = createStyledButton("Demo Visitor", FOREST_400, TEXT_DARK);
+
+        buttonPanel.add(fullStatsBtn);
+        buttonPanel.add(bookStatsBtn);
+        buttonPanel.add(loanStatsBtn);
+        buttonPanel.add(memberStatsBtn);
+        buttonPanel.add(newspaperStatsBtn);
+        buttonPanel.add(refreshBtn);
+        buttonPanel.add(exportStatsBtn);
+        buttonPanel.add(visitorDemoBtn);
 
         JTextArea statsArea = new JTextArea();
         statsArea.setEditable(false);
         statsArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        statsArea.setBackground(LIGHT_PINK);
-        statsArea.setForeground(Color.BLACK);
+        statsArea.setBackground(CREAM_100);
+        statsArea.setForeground(TEXT_DARK);
+        statsArea.setBorder(BorderFactory.createLineBorder(CREAM_200));
 
         JScrollPane scrollPane = new JScrollPane(statsArea);
+        scrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(CREAM_200),
+                "Rezultate Statistici",
+                TitledBorder.LEFT, TitledBorder.TOP,
+                GEORGIA_BOLD, FOREST_600
+        ));
+
+        panel.add(buttonPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
 
-        refreshStatsPanel(statsArea);
+        fullStatsBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getFullStatistics()));
+        bookStatsBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getBookStatistics()));
+        loanStatsBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getLoanStatistics()));
+        memberStatsBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getMemberStatistics()));
+        newspaperStatsBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getNewspaperStatistics()));
+        refreshBtn.addActionListener(e -> statsArea.setText(statisticsMenu.getFullStatistics()));
+        exportStatsBtn.addActionListener(e -> exportStatisticsToFile(statsArea.getText()));
+        visitorDemoBtn.addActionListener(e -> showStatisticsDialog());
+
+        statsArea.setText(statisticsMenu.getFullStatistics());
 
         return panel;
     }
 
+    private JPanel createAuditPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(CREAM_50);
+        panel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        buttonPanel.setBackground(CREAM_50);
+        JButton refreshBtn = createStyledButton("Refresh", FOREST_500, TEXT_DARK);
+        JButton clearBtn = createStyledButton("Sterge Istoric", FOREST_500, TEXT_DARK);
+        JButton exportBtn = createStyledButton("Exporta Log", AMBER, TEXT_DARK);
+        buttonPanel.add(refreshBtn);
+        buttonPanel.add(clearBtn);
+        buttonPanel.add(exportBtn);
+
+        JTextArea logArea = new JTextArea();
+        logArea.setEditable(false);
+        logArea.setFont(new Font("Monospaced", Font.PLAIN, 11));
+        logArea.setBackground(CREAM_100);
+        logArea.setForeground(TEXT_DARK);
+        JScrollPane scrollPane = new JScrollPane(logArea);
+        scrollPane.setBorder(BorderFactory.createTitledBorder(
+                BorderFactory.createLineBorder(CREAM_200),
+                "Jurnal audit - operatiuni recente",
+                TitledBorder.LEFT, TitledBorder.TOP,
+                GEORGIA_BOLD, FOREST_600
+        ));
+
+        panel.add(buttonPanel, BorderLayout.NORTH);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        refreshBtn.addActionListener(e -> {
+            logArea.setText(AuditLogger.getInstance().getRecentLogs());
+            if (logArea.getText().isEmpty()) {
+                logArea.setText("Nicio operatiune inregistrata.\n");
+            }
+        });
+
+        clearBtn.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Sigur stergeti istoricul logurilor din memorie?",
+                    "Confirmare",
+                    JOptionPane.YES_NO_OPTION);
+            if (confirm == JOptionPane.YES_OPTION) {
+                AuditLogger.getInstance().clearRecentLogs();
+                logArea.setText("Istoric log sters.\n");
+                AuditLogger.getInstance().log("SISTEM", "Istoricul logurilor a fost sters");
+            }
+        });
+
+        exportBtn.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setSelectedFile(new File("audit_log_export.txt"));
+            if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                try (PrintWriter writer = new PrintWriter(new FileWriter(fileChooser.getSelectedFile()))) {
+                    writer.print(AuditLogger.getInstance().getRecentLogs());
+                    JOptionPane.showMessageDialog(this, "Log exportat cu succes!");
+                    AuditLogger.getInstance().log("EXPORT_LOG", "Log exportat in fisier: " + fileChooser.getSelectedFile().getName());
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(this, "Eroare la export: " + ex.getMessage());
+                }
+            }
+        });
+
+        return panel;
+    }
+
+    private void exportStatisticsToFile(String statisticsText) {
+        if (statisticsText == null || statisticsText.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Nu exista statistici de exportat!", "Eroare", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String[] formats = {"CSV", "TXT"};
+        int choice = JOptionPane.showOptionDialog(this,
+                "Alege formatul de export:", "Export Statistici",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE,
+                null, formats, formats[0]);
+
+        if (choice == -1) return;
+
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setSelectedFile(new File("statistici_export"));
+
+        if (fileChooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
+
+        String path = fileChooser.getSelectedFile().getAbsolutePath();
+
+        if (choice == 0) {
+            try (PrintWriter writer = new PrintWriter(new FileWriter(path + ".csv"))) {
+                String[] lines = statisticsText.split("\n");
+                for (String line : lines) {
+                    writer.println(line.replace(" | ", ",").replace(":", ","));
+                }
+                JOptionPane.showMessageDialog(this, "Statistici exportate in CSV");
+                AuditLogger.getInstance().log("EXPORT_STATISTICI", "Statistici exportate in CSV: " + path + ".csv");
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Eroare la export: " + e.getMessage());
+            }
+        } else {
+            try (PrintWriter writer = new PrintWriter(new FileWriter(path + ".txt"))) {
+                writer.println(statisticsText);
+                JOptionPane.showMessageDialog(this, "Statistici exportate in TXT");
+                AuditLogger.getInstance().log("EXPORT_STATISTICI", "Statistici exportate in TXT: " + path + ".txt");
+            } catch (IOException e) {
+                JOptionPane.showMessageDialog(this, "Eroare la export: " + e.getMessage());
+            }
+        }
+    }
+
     private void styleTable(JTable table) {
-        table.getTableHeader().setBackground(DARK_PINK);
-        table.getTableHeader().setForeground(Color.BLACK);
-        table.getTableHeader().setFont(new Font("Garamond", Font.BOLD, 12));
-        table.setRowHeight(25);
-        table.setBackground(LIGHT_PINK);
-        table.setForeground(Color.BLACK);
-        table.setFont(new Font("Garamond", Font.PLAIN, 12));
+        table.getTableHeader().setBackground(FOREST_600);
+        table.getTableHeader().setForeground(TEXT_DARK);
+        table.getTableHeader().setFont(GEORGIA_BOLD);
+        table.setRowHeight(28);
+        table.setBackground(CREAM_100);
+        table.setForeground(TEXT_DARK);
+        table.setFont(GEORGIA_PLAIN);
+        table.setGridColor(CREAM_200);
+        table.setShowGrid(true);
 
         table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
             @Override
@@ -996,11 +1678,11 @@ public class LibraryDashboard extends JFrame {
                                                            int row, int column) {
                 super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
                 if (!isSelected) {
-                    setBackground(row % 2 == 0 ? LIGHT_PINK : Color.WHITE);
-                    setForeground(Color.BLACK);
+                    setBackground(row % 2 == 0 ? CREAM_100 : CREAM_50);
+                    setForeground(TEXT_DARK);
                 } else {
-                    setBackground(DARK_PINK);
-                    setForeground(Color.WHITE);
+                    setBackground(FOREST_400);
+                    setForeground(CREAM_50);
                 }
                 return this;
             }
@@ -1009,7 +1691,7 @@ public class LibraryDashboard extends JFrame {
 
     class BooksTableModel extends AbstractTableModel implements com.example.tmppp_library_management.observer.BookObserver {
         private List<IBorrowable> books;
-        private final String[] columns = {"ID", "Titlu", "Autor", "An", "Stoc", "ISBN", "Pret", "Restrictii"};
+        private final String[] columns = {"ID", "TITLU", "AUTOR", "AN", "PRET"};
 
         public BooksTableModel() {
             refresh();
@@ -1021,10 +1703,23 @@ public class LibraryDashboard extends JFrame {
             fireTableDataChanged();
         }
 
+        public void updateWithFilteredBooks(List<IBorrowable> filteredBooks) {
+            this.books = filteredBooks;
+            fireTableDataChanged();
+        }
+
+        public void updateWithSortedBooks(List<Book> sortedBooks) {
+            this.books = new ArrayList<>(sortedBooks);
+            fireTableDataChanged();
+        }
+
+        public void restoreOriginalOrder() {
+            refresh();
+        }
+
         @Override
         public void update(com.example.tmppp_library_management.observer.BookEvent event) {
             refresh();
-            System.out.println("[Observer] " + event.getMessage());
         }
 
         @Override
@@ -1044,39 +1739,9 @@ public class LibraryDashboard extends JFrame {
                 case 1 -> book.getTitle();
                 case 2 -> book.getAuthor().getName();
                 case 3 -> book.getPublicationDate();
-                case 4 -> stockService.getStock(book.getIsbn()) != null ?
-                        stockService.getStock(book.getIsbn()).getAvailableQuantity() : 0;
-                case 5 -> formatIsbnForDisplay(book.getIsbn());
-                case 6 -> String.format("%.2f lei", book.getPrice());
-                case 7 -> getRestrictions(item);
+                case 4 -> String.format("%.2f lei", book.getPrice());
                 default -> "";
             };
-        }
-
-        private String formatIsbnForDisplay(String isbn) {
-            if (isbn == null) return "";
-            String digits = isbn.replaceAll("-", "");
-            if (digits.length() == 12) {
-                return digits.substring(0, 3) + "-" +
-                        digits.substring(3, 6) + "-" +
-                        digits.substring(6, 9) + "-" +
-                        digits.substring(9);
-            }
-            return isbn;
-        }
-
-        private String getRestrictions(IBorrowable item) {
-            if (item instanceof ReadingRoomDecorator) {
-                ReadingRoomDecorator rr = (ReadingRoomDecorator) item;
-                return "Doar in sala (" + rr.getRoom() + ")";
-            } else if (item instanceof RestrictedAccessDecorator) {
-                RestrictedAccessDecorator ra = (RestrictedAccessDecorator) item;
-                return "Acces: " + ra.getRequiredLevel();
-            } else if (item instanceof ApprovalRequiredDecorator) {
-                ApprovalRequiredDecorator ar = (ApprovalRequiredDecorator) item;
-                return "Aprobare: " + (ar.isApproved() ? "Aprobat" : "Necesara");
-            }
-            return "Fara restrictii";
         }
 
         @Override
@@ -1108,6 +1773,11 @@ public class LibraryDashboard extends JFrame {
             fireTableDataChanged();
         }
 
+        public void updateWithSortedNewspapers(List<Newspaper> sortedNewspapers) {
+            this.newspapers = new ArrayList<>(sortedNewspapers);
+            fireTableDataChanged();
+        }
+
         @Override
         public int getRowCount() { return newspapers != null ? newspapers.size() : 0; }
 
@@ -1121,7 +1791,7 @@ public class LibraryDashboard extends JFrame {
                 case 0 -> n.getItemId();
                 case 1 -> n.getTitle();
                 case 2 -> n instanceof LocalNewspaper ? "Local" : "National";
-                case 3 -> n.getPublisher();
+                case 3 -> n.getPublisher().getName();
                 case 4 -> n.getIssn();
                 default -> "";
             };
@@ -1241,7 +1911,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Setare Restrictii Carte", true);
         dialog.setSize(500, 400);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -1252,18 +1922,10 @@ public class LibraryDashboard extends JFrame {
         bookCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof Book) {
-                    Book b = (Book) value;
+                if (value instanceof Book b) {
                     setText(b.getTitle() + " - " + b.getAuthor().getName() + " (ID: " + b.getItemId() + ")");
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -1285,9 +1947,9 @@ public class LibraryDashboard extends JFrame {
         int row = 0;
 
         JPanel bookPanel = new JPanel(new BorderLayout());
-        bookPanel.setBackground(PRIMARY_PINK);
+        bookPanel.setBackground(CREAM_50);
         JLabel bookLabel = new JLabel("Selecteaza carte:");
-        bookLabel.setForeground(Color.BLACK);
+        bookLabel.setForeground(TEXT_DARK);
         bookPanel.add(bookLabel, BorderLayout.WEST);
         bookPanel.add(bookCombo, BorderLayout.CENTER);
         gbc.gridx = 0;
@@ -1297,9 +1959,9 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JPanel typePanel = new JPanel(new BorderLayout());
-        typePanel.setBackground(PRIMARY_PINK);
+        typePanel.setBackground(CREAM_50);
         JLabel typeLabel = new JLabel("Tip restrictie:");
-        typeLabel.setForeground(Color.BLACK);
+        typeLabel.setForeground(TEXT_DARK);
         typePanel.add(typeLabel, BorderLayout.WEST);
         typePanel.add(restrictionTypeCombo, BorderLayout.CENTER);
         gbc.gridx = 0;
@@ -1309,9 +1971,9 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JPanel roomPanel = new JPanel(new BorderLayout());
-        roomPanel.setBackground(PRIMARY_PINK);
+        roomPanel.setBackground(CREAM_50);
         JLabel roomLabel = new JLabel("Sala de lectura:");
-        roomLabel.setForeground(Color.BLACK);
+        roomLabel.setForeground(TEXT_DARK);
         roomPanel.add(roomLabel, BorderLayout.WEST);
         roomPanel.add(roomField, BorderLayout.CENTER);
         gbc.gridx = 0;
@@ -1321,9 +1983,9 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JPanel accessPanel = new JPanel(new BorderLayout());
-        accessPanel.setBackground(PRIMARY_PINK);
+        accessPanel.setBackground(CREAM_50);
         JLabel accessLabel = new JLabel("Nivel acces:");
-        accessLabel.setForeground(Color.BLACK);
+        accessLabel.setForeground(TEXT_DARK);
         accessPanel.add(accessLabel, BorderLayout.WEST);
         accessPanel.add(accessLevelCombo, BorderLayout.CENTER);
         gbc.gridx = 0;
@@ -1348,9 +2010,9 @@ public class LibraryDashboard extends JFrame {
         });
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -1362,38 +2024,33 @@ public class LibraryDashboard extends JFrame {
         saveBtn.addActionListener(e -> {
             try {
                 Book selectedBook = (Book) bookCombo.getSelectedItem();
-                if (selectedBook == null) {
-                    throw new Exception("Selecteaza o carte");
-                }
+                if (selectedBook == null) throw new Exception("Selecteaza o carte");
 
                 String restrictionType = (String) restrictionTypeCombo.getSelectedItem();
                 IBorrowable updatedBook = null;
 
                 switch (restrictionType) {
-                    case "Fara restrictii":
-                        updatedBook = selectedBook;
-                        break;
-                    case "Doar in sala de lectura":
+                    case "Fara restrictii" -> updatedBook = selectedBook;
+                    case "Doar in sala de lectura" -> {
                         String room = roomField.getText();
-                        if (room.isEmpty()) {
-                            throw new Exception("Introduceti sala de lectura");
-                        }
+                        if (room.isEmpty()) throw new Exception("Introduceti sala de lectura");
                         updatedBook = new ReadingRoomDecorator(selectedBook, room);
-                        break;
-                    case "Acces restrictionat":
+                    }
+                    case "Acces restrictionat" -> {
                         MemberType level = (MemberType) accessLevelCombo.getSelectedItem();
                         updatedBook = new RestrictedAccessDecorator(selectedBook, level);
-                        break;
-                    case "Necesita aprobare":
+                    }
+                    case "Necesita aprobare" -> {
                         updatedBook = new ApprovalRequiredDecorator(selectedBook);
                         if (currentLibrarian != null) {
                             ((ApprovalRequiredDecorator) updatedBook).approve(currentLibrarian.getUserName());
                         }
-                        break;
+                    }
                 }
 
                 if (updatedBook != null) {
                     bookService.updateBook(selectedBook.getItemId(), updatedBook);
+                    AuditLogger.getInstance().log("SET_RESTRICTII", "Carte: " + selectedBook.getTitle() + " (ID: " + selectedBook.getItemId() + ") - Restrictie noua: " + restrictionType);
                     ((BooksTableModel) table.getModel()).refresh();
                     dialog.dispose();
                     JOptionPane.showMessageDialog(this, "Restrictii actualizate cu succes!");
@@ -1411,7 +2068,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Adauga Carte", true);
         dialog.setSize(550, 750);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -1419,7 +2076,7 @@ public class LibraryDashboard extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBackground(PRIMARY_PINK);
+        formPanel.setBackground(CREAM_50);
         GridBagConstraints formGbc = new GridBagConstraints();
         formGbc.insets = new Insets(5, 10, 5, 10);
         formGbc.fill = GridBagConstraints.HORIZONTAL;
@@ -1435,8 +2092,8 @@ public class LibraryDashboard extends JFrame {
         row += 2;
 
         JLabel pagesLabel = new JLabel("Pagini:");
-        pagesLabel.setForeground(Color.BLACK);
-        pagesLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        pagesLabel.setForeground(TEXT_DARK);
+        pagesLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(pagesLabel, formGbc);
@@ -1449,7 +2106,7 @@ public class LibraryDashboard extends JFrame {
 
         JLabel pagesError = new JLabel(" ");
         pagesError.setForeground(Color.RED);
-        pagesError.setFont(new Font("Garamond", Font.ITALIC, 11));
+        pagesError.setFont(GEORGIA_ITALIC);
         formGbc.gridx = 1;
         formGbc.gridy = row;
         formPanel.add(pagesError, formGbc);
@@ -1465,8 +2122,8 @@ public class LibraryDashboard extends JFrame {
         row += 2;
 
         JLabel publisherLabel = new JLabel("Editura:");
-        publisherLabel.setForeground(Color.BLACK);
-        publisherLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        publisherLabel.setForeground(TEXT_DARK);
+        publisherLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(publisherLabel, formGbc);
@@ -1479,15 +2136,15 @@ public class LibraryDashboard extends JFrame {
 
         JLabel publisherError = new JLabel(" ");
         publisherError.setForeground(Color.RED);
-        publisherError.setFont(new Font("Garamond", Font.ITALIC, 11));
+        publisherError.setFont(GEORGIA_ITALIC);
         formGbc.gridx = 1;
         formGbc.gridy = row;
         formPanel.add(publisherError, formGbc);
         row++;
 
         JLabel priceLabel = new JLabel("Pret (lei):");
-        priceLabel.setForeground(Color.BLACK);
-        priceLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        priceLabel.setForeground(TEXT_DARK);
+        priceLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(priceLabel, formGbc);
@@ -1500,15 +2157,15 @@ public class LibraryDashboard extends JFrame {
 
         JLabel priceError = new JLabel(" ");
         priceError.setForeground(Color.RED);
-        priceError.setFont(new Font("Garamond", Font.ITALIC, 11));
+        priceError.setFont(GEORGIA_ITALIC);
         formGbc.gridx = 1;
         formGbc.gridy = row;
         formPanel.add(priceError, formGbc);
         row++;
 
         JLabel typeLabel = new JLabel("Tip:");
-        typeLabel.setForeground(Color.BLACK);
-        typeLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        typeLabel.setForeground(TEXT_DARK);
+        typeLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(typeLabel, formGbc);
@@ -1520,8 +2177,8 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JLabel levelLabel = new JLabel("Nivel romance (1-5):");
-        levelLabel.setForeground(Color.BLACK);
-        levelLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        levelLabel.setForeground(TEXT_DARK);
+        levelLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(levelLabel, formGbc);
@@ -1534,15 +2191,15 @@ public class LibraryDashboard extends JFrame {
 
         JLabel levelError = new JLabel(" ");
         levelError.setForeground(Color.RED);
-        levelError.setFont(new Font("Garamond", Font.ITALIC, 11));
+        levelError.setFont(GEORGIA_ITALIC);
         formGbc.gridx = 1;
         formGbc.gridy = row;
         formPanel.add(levelError, formGbc);
         row++;
 
         JLabel tropesLabel = new JLabel("Tropi:");
-        tropesLabel.setForeground(Color.BLACK);
-        tropesLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        tropesLabel.setForeground(TEXT_DARK);
+        tropesLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(tropesLabel, formGbc);
@@ -1571,8 +2228,8 @@ public class LibraryDashboard extends JFrame {
         });
 
         JLabel stockLabel = new JLabel("Stoc initial:");
-        stockLabel.setForeground(Color.BLACK);
-        stockLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        stockLabel.setForeground(TEXT_DARK);
+        stockLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = row;
         formPanel.add(stockLabel, formGbc);
@@ -1586,16 +2243,16 @@ public class LibraryDashboard extends JFrame {
 
         JLabel stockError = new JLabel(" ");
         stockError.setForeground(Color.RED);
-        stockError.setFont(new Font("Garamond", Font.ITALIC, 11));
+        stockError.setFont(GEORGIA_ITALIC);
         formGbc.gridx = 1;
         formGbc.gridy = row;
         formPanel.add(stockError, formGbc);
         row++;
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -1713,10 +2370,12 @@ public class LibraryDashboard extends JFrame {
                         FantasyBook book = librarianService.addFantasyBook(currentToken, (int)(System.currentTimeMillis() % 10000),
                                 title, year, pages, author, isbn, publisher, price);
                         stockService.addStock(book.getIsbn(), stockQuantity);
+                        AuditLogger.getInstance().log("ADAUGA_CARTE", "Fantasy: " + title + " (ID: " + book.getItemId() + ", ISBN: " + isbn + ", Stoc: " + stockQuantity + ")");
                     } else {
                         RomanceBook book = librarianService.addRomanceBook(currentToken, (int)(System.currentTimeMillis() % 10000),
                                 title, year, pages, author, isbn, publisher, level, tropes, price);
                         stockService.addStock(book.getIsbn(), stockQuantity);
+                        AuditLogger.getInstance().log("ADAUGA_CARTE", "Romance: " + title + " (ID: " + book.getItemId() + ", ISBN: " + isbn + ", Stoc: " + stockQuantity + ", Nivel: " + level + ", Tropi: " + tropes + ")");
                     }
 
                     ((BooksTableModel) table.getModel()).refresh();
@@ -1736,7 +2395,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Adauga Ziar", true);
         dialog.setSize(550, 600);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -1774,7 +2433,7 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Tip:", typeCombo, gbc, row++);
 
         JLabel cityLabel = new JLabel("Oras (pentru Local):");
-        cityLabel.setForeground(Color.BLACK);
+        cityLabel.setForeground(TEXT_DARK);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(cityLabel, gbc);
@@ -1783,7 +2442,7 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JLabel regionLabel = new JLabel("Regiune (pentru Local):");
-        regionLabel.setForeground(Color.BLACK);
+        regionLabel.setForeground(TEXT_DARK);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(regionLabel, gbc);
@@ -1792,7 +2451,7 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JLabel areaLabel = new JLabel("Arie distributie (pentru National):");
-        areaLabel.setForeground(Color.BLACK);
+        areaLabel.setForeground(TEXT_DARK);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(areaLabel, gbc);
@@ -1801,7 +2460,7 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JLabel orientationLabel = new JLabel("Orientare politica (pentru National):");
-        orientationLabel.setForeground(Color.BLACK);
+        orientationLabel.setForeground(TEXT_DARK);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(orientationLabel, gbc);
@@ -1809,10 +2468,33 @@ public class LibraryDashboard extends JFrame {
         dialog.add(politicalOrientationField, gbc);
         row++;
 
+        cityLabel.setVisible(false);
+        cityField.setVisible(false);
+        regionLabel.setVisible(false);
+        regionField.setVisible(false);
+        areaLabel.setVisible(false);
+        distributionAreaField.setVisible(false);
+        orientationLabel.setVisible(false);
+        politicalOrientationField.setVisible(false);
+
+        typeCombo.addActionListener(e -> {
+            String type = (String) typeCombo.getSelectedItem();
+            boolean isLocal = "Local".equals(type);
+            cityLabel.setVisible(isLocal);
+            cityField.setVisible(isLocal);
+            regionLabel.setVisible(isLocal);
+            regionField.setVisible(isLocal);
+            areaLabel.setVisible(!isLocal);
+            distributionAreaField.setVisible(!isLocal);
+            orientationLabel.setVisible(!isLocal);
+            politicalOrientationField.setVisible(!isLocal);
+            dialog.pack();
+        });
+
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -1868,6 +2550,7 @@ public class LibraryDashboard extends JFrame {
                 }
 
                 newspaperService.addItem(newspaper);
+                AuditLogger.getInstance().log("ADAUGA_ZIAR", newspaper.getTitle() + " (ID: " + newspaper.getItemId() + ", ISSN: " + issn + ", Tip: " + type + ")");
                 ((NewspapersTableModel) table.getModel()).refresh();
                 dialog.dispose();
                 JOptionPane.showMessageDialog(this, "Ziar adaugat cu succes!");
@@ -1894,7 +2577,11 @@ public class LibraryDashboard extends JFrame {
 
         int bookId = (int) table.getValueAt(selectedRow, 0);
         String bookTitle = (String) table.getValueAt(selectedRow, 1);
-        String bookIsbn = (String) table.getValueAt(selectedRow, 5);
+        String bookIsbn = "N/A";
+        Book book = findBookById(bookId);
+        if (book != null) {
+            bookIsbn = book.getIsbn();
+        }
 
         int confirm = JOptionPane.showConfirmDialog(this,
                 "Sunteti sigur ca doriti sa stergeti aceasta carte?\n\n" +
@@ -1909,6 +2596,7 @@ public class LibraryDashboard extends JFrame {
         if (confirm == JOptionPane.YES_OPTION) {
             boolean deleted = librarianService.deleteBook(currentToken, bookId);
             if (deleted) {
+                AuditLogger.getInstance().log("STERGE_CARTE", "Cartea \"" + bookTitle + "\" (ID: " + bookId + ", ISBN: " + bookIsbn + ") a fost stearsa");
                 ((BooksTableModel) table.getModel()).refresh();
                 JOptionPane.showMessageDialog(this,
                         "Cartea \"" + bookTitle + "\" a fost stearsa cu succes!",
@@ -1927,7 +2615,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Adauga Membru", true);
         dialog.setSize(500, 350);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -1935,7 +2623,7 @@ public class LibraryDashboard extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBackground(PRIMARY_PINK);
+        formPanel.setBackground(CREAM_50);
         GridBagConstraints formGbc = new GridBagConstraints();
         formGbc.insets = new Insets(5, 10, 5, 10);
         formGbc.fill = GridBagConstraints.HORIZONTAL;
@@ -1947,8 +2635,8 @@ public class LibraryDashboard extends JFrame {
                 "Email:", validationFactory.buildEmailChain(), "Email", FormatInputValidator.FormatType.EMAIL);
 
         JLabel typeLabel = new JLabel("Tip membru:");
-        typeLabel.setForeground(Color.BLACK);
-        typeLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        typeLabel.setForeground(TEXT_DARK);
+        typeLabel.setFont(GEORGIA_PLAIN);
         formGbc.gridx = 0;
         formGbc.gridy = 4;
         formPanel.add(typeLabel, formGbc);
@@ -1959,9 +2647,9 @@ public class LibraryDashboard extends JFrame {
         formPanel.add(typeCombo, formGbc);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -1982,6 +2670,7 @@ public class LibraryDashboard extends JFrame {
                     MemberType type = (MemberType) typeCombo.getSelectedItem();
 
                     Member member = memberService.addMember(name, email, type);
+                    AuditLogger.getInstance().log("ADAUGA_MEMBRU", member.getUserName() + " (ID: " + member.getUserId() + ", Email: " + email + ", Tip: " + type + ", Membership: " + member.getMembershipNumber() + ")");
                     ((MembersTableModel) table.getModel()).refresh();
                     dialog.dispose();
                     JOptionPane.showMessageDialog(this, "Membru adaugat cu succes!\nNumar membership: " + member.getMembershipNumber());
@@ -1996,16 +2685,16 @@ public class LibraryDashboard extends JFrame {
     }
 
     private void styleComboBox(JComboBox<?> comboBox) {
-        comboBox.setBackground(Color.WHITE);
-        comboBox.setForeground(Color.BLACK);
-        comboBox.setFont(new Font("Garamond", Font.PLAIN, 12));
+        comboBox.setBackground(CREAM_50);
+        comboBox.setForeground(TEXT_DARK);
+        comboBox.setFont(GEORGIA_PLAIN);
     }
 
     private void showCreateLoanDialog(JTable table) {
         JDialog dialog = new JDialog(this, "Creaza Imprumut", true);
         dialog.setSize(550, 400);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2033,20 +2722,12 @@ public class LibraryDashboard extends JFrame {
         memberCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof Member) {
-                    Member m = (Member) value;
+                if (value instanceof Member m) {
                     setText(m.getUserName() + " (" + m.getMemberType() + ") - " +
                             m.getCurrentLoans() + "/" + m.getMaxBooks() + " imprumuturi | " +
                             "Membership: " + m.getMembershipNumber());
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2064,34 +2745,20 @@ public class LibraryDashboard extends JFrame {
                         String type = "";
                         String restrictions = "";
 
-                        if (book instanceof FantasyBook) {
-                            type = "[Fantasy]";
-                        } else if (book instanceof RomanceBook) {
-                            type = "[Romance]";
-                        }
+                        if (book instanceof FantasyBook) type = "[Fantasy] ";
+                        else if (book instanceof RomanceBook) type = "[Romance] ";
 
-                        if (value instanceof ReadingRoomDecorator) {
-                            restrictions = " [DOAR IN SALA - NU SE POATE IMPRUMUTA]";
-                        } else if (value instanceof RestrictedAccessDecorator) {
-                            restrictions = " [Acces restrictionat]";
-                        } else if (value instanceof ApprovalRequiredDecorator) {
-                            restrictions = " [Necesita aprobare]";
-                        }
+                        if (value instanceof ReadingRoomDecorator) restrictions = " [DOAR IN SALA]";
+                        else if (value instanceof RestrictedAccessDecorator) restrictions = " [Acces restrictionat]";
+                        else if (value instanceof ApprovalRequiredDecorator) restrictions = " [Aprobare necesara]";
 
-                        setText(String.format("%s %s - %s | Stoc: %d | Pret: %.2f lei%s",
+                        setText(String.format("%s%s - %s | Stoc: %d | Pret: %.2f lei%s",
                                 type, book.getTitle(), book.getAuthor().getName(), stock, book.getPrice(), restrictions));
                     } else {
                         setText(value.toString());
                     }
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2102,16 +2769,16 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Selecteaza carte:", bookCombo, gbc, row++);
 
         JPanel infoPanel = new JPanel(new GridLayout(3, 1));
-        infoPanel.setBackground(PRIMARY_PINK);
+        infoPanel.setBackground(CREAM_50);
         JLabel infoLabel1 = new JLabel("Nota: Membrii au limita de imprumuturi in functie de tipul lor.");
         JLabel infoLabel2 = new JLabel("Cartile cu restrictii pot necesita aprobare speciala.");
         JLabel infoLabel3 = new JLabel("Cartile cu 'DOAR IN SALA' NU pot fi imprumutate acasa.");
-        infoLabel1.setForeground(Color.BLACK);
-        infoLabel2.setForeground(Color.BLACK);
+        infoLabel1.setForeground(TEXT_MUTED);
+        infoLabel2.setForeground(TEXT_MUTED);
         infoLabel3.setForeground(Color.RED);
-        infoLabel1.setFont(new Font("Garamond", Font.ITALIC, 11));
-        infoLabel2.setFont(new Font("Garamond", Font.ITALIC, 11));
-        infoLabel3.setFont(new Font("Garamond", Font.BOLD, 11));
+        infoLabel1.setFont(GEORGIA_ITALIC);
+        infoLabel2.setFont(GEORGIA_ITALIC);
+        infoLabel3.setFont(GEORGIA_BOLD);
         infoPanel.add(infoLabel1);
         infoPanel.add(infoLabel2);
         infoPanel.add(infoLabel3);
@@ -2123,9 +2790,9 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Creaza Imprumut", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Creaza Imprumut", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2139,22 +2806,17 @@ public class LibraryDashboard extends JFrame {
                 Member member = (Member) memberCombo.getSelectedItem();
                 IBorrowable book = (IBorrowable) bookCombo.getSelectedItem();
 
-                if (member == null || book == null) {
-                    throw new Exception("Selecteaza membru si carte");
-                }
+                if (member == null || book == null) throw new Exception("Selecteaza membru si carte");
 
                 if (book instanceof ReadingRoomDecorator) {
                     JOptionPane.showMessageDialog(dialog,
-                            "Aceasta carte poate fi citita DOAR in sala de lectura!\n\n" +
-                                    "Nu se poate crea un imprumut pentru a fi luata acasa.\n" +
-                                    "Va rugam sa folositi cartea in biblioteca.",
+                            "Aceasta carte poate fi citita DOAR in sala de lectura!\nNu se poate crea un imprumut pentru a fi luata acasa.",
                             "Imprumut nepermis",
                             JOptionPane.ERROR_MESSAGE);
                     return;
                 }
 
-                if (book instanceof RestrictedAccessDecorator) {
-                    RestrictedAccessDecorator ra = (RestrictedAccessDecorator) book;
+                if (book instanceof RestrictedAccessDecorator ra) {
                     if (ra.getRequiredLevel() != member.getMemberType()) {
                         JOptionPane.showMessageDialog(dialog,
                                 "Nu aveti acces la aceasta carte!\nNivel necesar: " + ra.getRequiredLevel() +
@@ -2165,15 +2827,12 @@ public class LibraryDashboard extends JFrame {
                     }
                 }
 
-                if (book instanceof ApprovalRequiredDecorator) {
-                    ApprovalRequiredDecorator ar = (ApprovalRequiredDecorator) book;
-                    if (!ar.isApproved()) {
-                        JOptionPane.showMessageDialog(dialog,
-                                "Aceasta carte necesita aprobare speciala!\nContactati un bibliotecar.",
-                                "Aprobare necesara",
-                                JOptionPane.WARNING_MESSAGE);
-                        return;
-                    }
+                if (book instanceof ApprovalRequiredDecorator ar && !ar.isApproved()) {
+                    JOptionPane.showMessageDialog(dialog,
+                            "Aceasta carte necesita aprobare speciala!\nContactati un bibliotecar.",
+                            "Aprobare necesara",
+                            JOptionPane.WARNING_MESSAGE);
+                    return;
                 }
 
                 if (!member.canBorrow()) {
@@ -2184,17 +2843,13 @@ public class LibraryDashboard extends JFrame {
                 if (bookObj != null) {
                     int stock = stockService.getStock(bookObj.getIsbn()) != null ?
                             stockService.getStock(bookObj.getIsbn()).getAvailableQuantity() : 0;
-                    if (stock <= 0) {
-                        throw new Exception("Cartea nu este disponibila (stoc epuizat)");
-                    }
+                    if (stock <= 0) throw new Exception("Cartea nu este disponibila (stoc epuizat)");
                 }
 
                 Loan loan = loanService.createLoan(member, book);
                 if (loan != null) {
                     memberService.incrementLoans(member.getUserId());
-                    if (bookObj != null) {
-                        stockService.decreaseStock(bookObj.getIsbn(), 1);
-                    }
+                    AuditLogger.getInstance().log("CREARE_IMPRUMUT", member.getUserName() + " (ID: " + member.getUserId() + ") a imprumutat \"" + bookObj.getTitle() + "\" (ID: " + bookObj.getItemId() + "). Data returnare: " + loan.getReturnDate().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")));
                     ((ActiveLoansTableModel) table.getModel()).refresh();
                     dialog.dispose();
                     JOptionPane.showMessageDialog(this,
@@ -2219,23 +2874,109 @@ public class LibraryDashboard extends JFrame {
         dialog.setVisible(true);
     }
 
-    private void returnLoan(JTable table) {
-        int selectedRow = table.getSelectedRow();
+    private void showReturnLoanDialog(JTable activeTable, JTable historyTable) {
+        int selectedRow = activeTable.getSelectedRow();
         if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(this, "Selecteaza un imprumut pentru returnare", "Eroare", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Selectati un imprumut pentru returnare!", "Eroare", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        Integer loanId = (Integer) table.getValueAt(selectedRow, 0);
+        int loanId = (int) activeTable.getValueAt(selectedRow, 0);
         Loan loan = loanService.getLoanById(loanId);
 
-        if (loan != null) {
-            loanService.closeLoan(loan);
-            ((ActiveLoansTableModel) table.getModel()).refresh();
-            JOptionPane.showMessageDialog(this, "Imprumut returnat cu succes!");
-        } else {
+        if (loan == null) {
             JOptionPane.showMessageDialog(this, "Imprumutul nu a fost gasit!", "Eroare", JOptionPane.ERROR_MESSAGE);
+            return;
         }
+
+        Book book = loan.getBook();
+        Member member = loan.getUser();
+
+        LocalDate returnDate = LocalDate.now();
+        int daysLate = 0;
+        double latePenalty = 0;
+
+        if (returnDate.isAfter(loan.getReturnDate())) {
+            daysLate = (int) java.time.temporal.ChronoUnit.DAYS.between(loan.getReturnDate(), returnDate);
+            latePenalty = daysLate * 1.0;
+        }
+
+        String[] damageOptions = {"In stare buna", "Usor deteriorata (20% din pret)", "Foarte deteriorata (50% din pret)", "Pierduta (100% din pret)"};
+        int damageChoice = JOptionPane.showOptionDialog(this,
+                "Selectati starea cartii:\n\n" +
+                        "Carte: " + book.getTitle() + "\n" +
+                        "Pret carte: " + book.getPrice() + " lei\n" +
+                        "Zile intarziere: " + daysLate + "\n" +
+                        "Penalizare intarziere: " + latePenalty + " lei",
+                "Stare Carte",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null, damageOptions, damageOptions[0]);
+
+        double damagePenalty = 0;
+        String damageDescription = "";
+
+        switch (damageChoice) {
+            case 1:
+                damagePenalty = book.getPrice() * 0.20;
+                damageDescription = "Usor deteriorata - 20% din pret";
+                break;
+            case 2:
+                damagePenalty = book.getPrice() * 0.50;
+                damageDescription = "Foarte deteriorata - 50% din pret";
+                break;
+            case 3:
+                damagePenalty = book.getPrice();
+                damageDescription = "Pierduta - 100% din pret";
+                break;
+            default:
+                damageDescription = "In stare buna";
+        }
+
+        double totalPenalty = latePenalty + damagePenalty;
+
+        if (totalPenalty > 0) {
+            String[] paymentOptions = {"Da, s-a platit", "Nu, nu s-a platit"};
+            int paymentChoice = JOptionPane.showOptionDialog(this,
+                    "=== DETALII PLATA ===\n\n" +
+                            "Carte: " + book.getTitle() + "\n" +
+                            "Pret carte: " + book.getPrice() + " lei\n\n" +
+                            "Penalizare intarziere (" + daysLate + " zile): " + latePenalty + " lei\n" +
+                            "Penalizare dauna: " + damagePenalty + " lei (" + damageDescription + ")\n" +
+                            "TOTAL DE PLATA: " + totalPenalty + " lei\n\n" +
+                            "S-a primit plata?",
+                    "Confirmare Plata",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE,
+                    null, paymentOptions, paymentOptions[0]);
+
+            if (paymentChoice == 1) {
+                JOptionPane.showMessageDialog(this, "Returnarea nu poate fi finalizata fara plata!", "Eroare", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            paymentService.processPayment(totalPenalty, "CASH",
+                    "Returnare - " + book.getTitle() + " - " + damageDescription + " - intarziere " + daysLate + " zile",
+                    member.getUserId());
+        }
+
+        loan.close();
+        stockService.increaseStock(book.getIsbn(), 1);
+
+        AuditLogger.getInstance().log("RETUR_CARTE", member.getUserName() + " (ID: " + member.getUserId() + ") a returnat \"" + book.getTitle() + "\" (ID: " + book.getItemId() + "). Penalizare: " + totalPenalty + " lei, Zile intarziere: " + daysLate);
+
+        receiptMenu.printReturnReceipt(loan, returnDate, daysLate, totalPenalty, totalPenalty > 0);
+
+        ((ActiveLoansTableModel) activeTable.getModel()).refresh();
+        ((ClosedLoansTableModel) historyTable.getModel()).refresh();
+
+        JOptionPane.showMessageDialog(this,
+                "Returnare procesata cu succes!\n\n" +
+                        "Carte: " + book.getTitle() + "\n" +
+                        "Membru: " + member.getUserName() + "\n" +
+                        "Total plata: " + totalPenalty + " lei",
+                "Succes",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void renewLoan(JTable table) {
@@ -2257,15 +2998,16 @@ public class LibraryDashboard extends JFrame {
                     JOptionPane.QUESTION_MESSAGE,
                     null, options, options[0]);
 
-            int extraDays = 0;
-            switch (choice) {
-                case 0 -> extraDays = 7;
-                case 1 -> extraDays = 14;
-                case 2 -> extraDays = 30;
-                default -> { return; }
-            }
+            int extraDays = switch (choice) {
+                case 0 -> 7;
+                case 1 -> 14;
+                case 2 -> 30;
+                default -> 0;
+            };
+            if (extraDays == 0) return;
 
             loanService.renewLoan(loan, extraDays);
+            AuditLogger.getInstance().log("PRELUNGIRE_IMPRUMUT", "Imprumutul cu ID " + loanId + " a fost prelungit cu " + extraDays + " zile");
             ((ActiveLoansTableModel) table.getModel()).refresh();
             JOptionPane.showMessageDialog(this, "Imprumut prelungit cu succes! +" + extraDays + " zile");
         } else {
@@ -2277,7 +3019,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Creeaza Pachet " + (type.equals("premium") ? "Premium" : "Standard"), true);
         dialog.setSize(450, 300);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2294,11 +3036,8 @@ public class LibraryDashboard extends JFrame {
                     Book book = getBookFromItem((IBorrowable) value);
                     if (book != null) {
                         String type = "";
-                        if (book instanceof FantasyBook) {
-                            type = "[Fantasy] ";
-                        } else if (book instanceof RomanceBook) {
-                            type = "[Romance] ";
-                        }
+                        if (book instanceof FantasyBook) type = "[Fantasy] ";
+                        else if (book instanceof RomanceBook) type = "[Romance] ";
                         setText(type + book.getTitle() + " - " + book.getAuthor().getName() +
                                 " | " + String.format("%.2f", book.getPrice()) + " lei");
                     } else {
@@ -2306,14 +3045,6 @@ public class LibraryDashboard extends JFrame {
                     }
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2323,9 +3054,9 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Alege cartea:", bookCombo, gbc, row++);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Creeaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Creeaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2338,13 +3069,10 @@ public class LibraryDashboard extends JFrame {
             try {
                 IBorrowable item = (IBorrowable) bookCombo.getSelectedItem();
                 Book book = getBookFromItem(item);
-
-                if (book == null) {
-                    throw new Exception("Selecteaza o carte valida");
-                }
+                if (book == null) throw new Exception("Selecteaza o carte valida");
 
                 GiftPackage gift = giftPackageService.createGiftPackage(type, book, "Cadou special");
-
+                AuditLogger.getInstance().log("CREARE_PACHET_CADOU", (type.equals("premium") ? "Premium" : "Standard") + " - Carte: " + book.getTitle() + " (ID: " + book.getItemId() + "), Pret total: " + String.format("%.2f", gift.calculateTotalPrice()) + " lei");
                 ((GiftsTableModel) table.getModel()).refresh();
                 dialog.dispose();
                 JOptionPane.showMessageDialog(this, "Pachet creat cu succes! Pret total: " + String.format("%.2f", gift.calculateTotalPrice()) + " lei");
@@ -2375,22 +3103,15 @@ public class LibraryDashboard extends JFrame {
             );
 
             for (EventComponent child : group.getEvents()) {
-                if (child instanceof SingleEvent) {
-                    SingleEvent event = (SingleEvent) child;
+                if (child instanceof SingleEvent event) {
                     eventsNotInGroups.remove(event);
-
-                    String spotsInfo;
-                    if (event.getMaxParticipants() == -1) {
-                        spotsInfo = "Locuri: nelimitate";
-                    } else {
-                        spotsInfo = "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
-                    }
+                    String spotsInfo = event.getMaxParticipants() == -1 ? "Locuri: nelimitate" : "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
                     groupNode.add(new DefaultMutableTreeNode(
                             "  " + event.getName() + " (" + event.getDate() + " - " +
                                     event.getLocation() + ") [" + spotsInfo + "]"
                     ));
-                } else if (child instanceof EventGroup) {
-                    addEventsToNode(groupNode, (EventGroup) child);
+                } else if (child instanceof EventGroup subGroup) {
+                    addEventsToNode(groupNode, subGroup);
                 }
             }
             root.add(groupNode);
@@ -2399,12 +3120,7 @@ public class LibraryDashboard extends JFrame {
         if (!eventsNotInGroups.isEmpty()) {
             DefaultMutableTreeNode ungroupedNode = new DefaultMutableTreeNode("Evenimente fara grup");
             for (SingleEvent event : eventsNotInGroups) {
-                String spotsInfo;
-                if (event.getMaxParticipants() == -1) {
-                    spotsInfo = "Locuri: nelimitate";
-                } else {
-                    spotsInfo = "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
-                }
+                String spotsInfo = event.getMaxParticipants() == -1 ? "Locuri: nelimitate" : "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
                 ungroupedNode.add(new DefaultMutableTreeNode(
                         event.getName() + " (" + event.getDate() + " - " +
                                 event.getLocation() + ") [" + spotsInfo + "]"
@@ -2413,65 +3129,30 @@ public class LibraryDashboard extends JFrame {
             root.add(ungroupedNode);
         }
 
-        DefaultTreeModel model = new DefaultTreeModel(root);
-        tree.setModel(model);
-        ((DefaultTreeModel) tree.getModel()).reload();
+        tree.setModel(new DefaultTreeModel(root));
     }
 
     private void addEventsToNode(DefaultMutableTreeNode node, EventGroup group) {
         DefaultMutableTreeNode groupNode = new DefaultMutableTreeNode(group.getName() + " (" + group.getEvents().size() + " evenimente)");
         for (EventComponent child : group.getEvents()) {
-            if (child instanceof SingleEvent) {
-                SingleEvent event = (SingleEvent) child;
-                String spotsInfo;
-                if (event.getMaxParticipants() == -1) {
-                    spotsInfo = "Locuri: nelimitate";
-                } else {
-                    spotsInfo = "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
-                }
+            if (child instanceof SingleEvent event) {
+                String spotsInfo = event.getMaxParticipants() == -1 ? "Locuri: nelimitate" : "Locuri: " + event.getRegisteredParticipants() + "/" + event.getMaxParticipants();
                 groupNode.add(new DefaultMutableTreeNode(
                         "  " + event.getName() + " (" + event.getDate() + " - " +
                                 event.getLocation() + ") [" + spotsInfo + "]"
                 ));
-            } else if (child instanceof EventGroup) {
-                addEventsToNode(groupNode, (EventGroup) child);
+            } else if (child instanceof EventGroup subGroup) {
+                addEventsToNode(groupNode, subGroup);
             }
         }
         node.add(groupNode);
-    }
-
-    private void refreshStatsPanel(JTextArea statsArea) {
-        StringBuilder stats = new StringBuilder();
-        stats.append("=== STATISTICI BIBLIOTECA ===\n\n");
-        stats.append("Carti totale: ").append(bookService.findAllBooks().size()).append("\n");
-        stats.append("Ziare totale: ").append(newspaperService.getAllItems().size()).append("\n");
-        stats.append("Membri totali: ").append(memberService.getAllMembers().size()).append("\n");
-        stats.append("Imprumuturi active: ").append(loanService.getActiveLoans().size()).append("\n");
-        stats.append("Pachete cadou create: ").append(giftPackageService.getCreatedPackages().size()).append("\n\n");
-
-        stats.append("=== IMPRUMUTURI PER TIP MEMBRU ===\n");
-        long standardCount = loanService.getActiveLoans().stream()
-                .filter(l -> l.getUser().getMemberType().toString().equals("SIMPLE"))
-                .count();
-        long studentCount = loanService.getActiveLoans().stream()
-                .filter(l -> l.getUser().getMemberType().toString().equals("STUDENT"))
-                .count();
-        long professorCount = loanService.getActiveLoans().stream()
-                .filter(l -> l.getUser().getMemberType().toString().equals("PROFESSOR"))
-                .count();
-
-        stats.append("SIMPLE: ").append(standardCount).append("\n");
-        stats.append("STUDENT: ").append(studentCount).append("\n");
-        stats.append("PROFESSOR: ").append(professorCount).append("\n");
-
-        statsArea.setText(stats.toString());
     }
 
     private void showAddEventDialog(JTable eventsTable, JTree tree) {
         JDialog dialog = new JDialog(this, "Adauga Eveniment", true);
         dialog.setSize(500, 500);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2493,6 +3174,8 @@ public class LibraryDashboard extends JFrame {
         maxParticipantsField.setEnabled(false);
         maxParticipantsField.setText("0");
         unlimitedCheckBox.setSelected(true);
+        unlimitedCheckBox.setBackground(CREAM_50);
+        unlimitedCheckBox.setForeground(TEXT_DARK);
 
         unlimitedCheckBox.addActionListener(e -> {
             maxParticipantsField.setEnabled(!unlimitedCheckBox.isSelected());
@@ -2512,7 +3195,7 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Tip eveniment:", typeCombo, gbc, row++);
 
         JPanel capacityPanel = new JPanel(new BorderLayout());
-        capacityPanel.setBackground(PRIMARY_PINK);
+        capacityPanel.setBackground(CREAM_50);
         capacityPanel.add(unlimitedCheckBox, BorderLayout.WEST);
         gbc.gridx = 0;
         gbc.gridy = row;
@@ -2523,9 +3206,9 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Numar locuri (daca este cazul):", maxParticipantsField, gbc, row++);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2554,6 +3237,7 @@ public class LibraryDashboard extends JFrame {
                     event = eventService.createEventWithCapacity(name, date, location, type, maxParticipants);
                 }
 
+                AuditLogger.getInstance().log("ADAUGA_EVENIMENT", event.getName() + " (ID: " + event.getId() + ", Data: " + date + ", Locatie: " + location + ", Tip: " + type + ", Locuri: " + (event.getMaxParticipants() == -1 ? "nelimitate" : event.getMaxParticipants()) + ")");
                 refreshEventsTable(eventsTable);
                 refreshEventTree(tree);
                 dialog.dispose();
@@ -2580,7 +3264,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Adauga Grup Evenimente", true);
         dialog.setSize(450, 250);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2594,9 +3278,9 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Nume grup:", nameField, gbc, row++);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Salveaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Salveaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2611,6 +3295,7 @@ public class LibraryDashboard extends JFrame {
                 if (name.isEmpty()) throw new Exception("Numele grupului este obligatoriu");
 
                 eventService.createGroup(name);
+                AuditLogger.getInstance().log("ADAUGA_GRUP", "Grup: " + name);
                 refreshEventTree(tree);
                 dialog.dispose();
                 JOptionPane.showMessageDialog(this, "Grup adaugat cu succes!");
@@ -2648,9 +3333,7 @@ public class LibraryDashboard extends JFrame {
                     }
                 }
             }
-            if (!alreadyInGroup) {
-                availableEvents.add(event);
-            }
+            if (!alreadyInGroup) availableEvents.add(event);
         }
 
         if (availableEvents.isEmpty()) {
@@ -2661,7 +3344,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Adauga Eveniment in Grup", true);
         dialog.setSize(500, 300);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2674,25 +3357,11 @@ public class LibraryDashboard extends JFrame {
         eventCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof SingleEvent) {
-                    SingleEvent e = (SingleEvent) value;
-                    String spotsInfo;
-                    if (e.getMaxParticipants() == -1) {
-                        spotsInfo = "Locuri: nelimitate";
-                    } else {
-                        spotsInfo = "Locuri: " + e.getRegisteredParticipants() + "/" + e.getMaxParticipants();
-                    }
+                if (value instanceof SingleEvent e) {
+                    String spotsInfo = e.getMaxParticipants() == -1 ? "Locuri: nelimitate" : "Locuri: " + e.getRegisteredParticipants() + "/" + e.getMaxParticipants();
                     setText(e.getName() + " (" + e.getDate() + " - " + e.getLocation() + ") [" + spotsInfo + "]");
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2701,19 +3370,10 @@ public class LibraryDashboard extends JFrame {
         groupCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof EventGroup) {
-                    EventGroup g = (EventGroup) value;
+                if (value instanceof EventGroup g) {
                     setText(g.getName() + " (" + g.getEvents().size() + " evenimente)");
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2724,9 +3384,9 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Selecteaza grup:", groupCombo, gbc, row++);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton saveBtn = createStyledButton("Adauga in Grup", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton saveBtn = createStyledButton("Adauga in Grup", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(saveBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2741,6 +3401,7 @@ public class LibraryDashboard extends JFrame {
 
             if (event != null && group != null) {
                 group.add(event);
+                AuditLogger.getInstance().log("ADAUGA_EVENIMENT_IN_GRUP", event.getName() + " (ID: " + event.getId() + ") adaugat in grupul " + group.getName());
                 refreshEventsTable(eventsTable);
                 refreshEventTree(tree);
                 dialog.dispose();
@@ -2757,12 +3418,13 @@ public class LibraryDashboard extends JFrame {
 
     private void showRegisterToEventDialog(JTree tree) {
         List<SingleEvent> events = eventService.getAllSingleEvents();
+        List<Member> members = memberService.getAllMembers();
+
         if (events.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Nu exista evenimente in sistem!", "Info", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
 
-        List<Member> members = memberService.getAllMembers();
         if (members.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Nu exista membri in sistem!", "Info", JOptionPane.INFORMATION_MESSAGE);
             return;
@@ -2771,7 +3433,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Inregistrare la Eveniment", true);
         dialog.setSize(550, 350);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2784,20 +3446,11 @@ public class LibraryDashboard extends JFrame {
         memberCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof Member) {
-                    Member m = (Member) value;
+                if (value instanceof Member m) {
                     setText(m.getUserName() + " (" + m.getMemberType() + ") - " +
                             m.getCurrentLoans() + "/" + m.getMaxBooks() + " imprumuturi");
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2806,25 +3459,11 @@ public class LibraryDashboard extends JFrame {
         eventCombo.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                if (value instanceof SingleEvent) {
-                    SingleEvent e = (SingleEvent) value;
-                    String spotsInfo;
-                    if (e.getMaxParticipants() == -1) {
-                        spotsInfo = "Locuri nelimitate";
-                    } else {
-                        spotsInfo = "Locuri disponibile: " + e.getAvailableSpots() + "/" + e.getMaxParticipants();
-                    }
+                if (value instanceof SingleEvent e) {
+                    String spotsInfo = e.getMaxParticipants() == -1 ? "Locuri nelimitate" : "Locuri disponibile: " + e.getAvailableSpots() + "/" + e.getMaxParticipants();
                     setText(e.getName() + " (" + e.getDate() + " - " + e.getLocation() + ") - " + spotsInfo);
                 } else {
                     setText(value != null ? value.toString() : "");
-                }
-
-                if (isSelected) {
-                    setBackground(list.getSelectionBackground());
-                    setForeground(list.getSelectionForeground());
-                } else {
-                    setBackground(list.getBackground());
-                    setForeground(list.getForeground());
                 }
                 return this;
             }
@@ -2835,9 +3474,9 @@ public class LibraryDashboard extends JFrame {
         addFormRow(dialog, "Selecteaza eveniment:", eventCombo, gbc, row++);
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton registerBtn = createStyledButton("Inregistreaza", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton registerBtn = createStyledButton("Inregistreaza", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(registerBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2857,6 +3496,7 @@ public class LibraryDashboard extends JFrame {
                             "Eveniment plin",
                             JOptionPane.WARNING_MESSAGE);
                 } else if (event.registerParticipant()) {
+                    AuditLogger.getInstance().log("INREGISTRARE_EVENIMENT", member.getUserName() + " (ID: " + member.getUserId() + ") s-a inregistrat la " + event.getName() + " (ID: " + event.getId() + "). Locuri ramase: " + event.getAvailableSpots());
                     refreshEventTree(tree);
                     dialog.dispose();
                     JOptionPane.showMessageDialog(this,
@@ -2865,13 +3505,9 @@ public class LibraryDashboard extends JFrame {
                             "Succes",
                             JOptionPane.INFORMATION_MESSAGE);
                 } else {
-                    JOptionPane.showMessageDialog(dialog,
-                            "Inregistrare esuata!",
-                            "Eroare",
-                            JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(dialog, "Inregistrare esuata!", "Eroare", JOptionPane.ERROR_MESSAGE);
                 }
             }
-            dialog.dispose();
         });
 
         cancelBtn.addActionListener(e -> dialog.dispose());
@@ -2882,7 +3518,7 @@ public class LibraryDashboard extends JFrame {
         JDialog dialog = new JDialog(this, "Procesare Returnare", true);
         dialog.setSize(600, 450);
         dialog.setLayout(new GridBagLayout());
-        dialog.getContentPane().setBackground(PRIMARY_PINK);
+        dialog.getContentPane().setBackground(CREAM_50);
         dialog.setLocationRelativeTo(this);
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -2890,7 +3526,6 @@ public class LibraryDashboard extends JFrame {
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         List<Book> allBooks = bookService.findAllBooksLegacy();
-
         List<BookDisplay> bookDisplays = new ArrayList<>();
         for (Book book : allBooks) {
             bookDisplays.add(new BookDisplay(book));
@@ -2905,8 +3540,8 @@ public class LibraryDashboard extends JFrame {
         int row = 0;
 
         JLabel bookLabel = new JLabel("Selecteaza carte:");
-        bookLabel.setForeground(Color.BLACK);
-        bookLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        bookLabel.setForeground(TEXT_DARK);
+        bookLabel.setFont(GEORGIA_PLAIN);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(bookLabel, gbc);
@@ -2915,8 +3550,8 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JLabel memberLabel = new JLabel("Selecteaza membru:");
-        memberLabel.setForeground(Color.BLACK);
-        memberLabel.setFont(new Font("Garamond", Font.PLAIN, 12));
+        memberLabel.setForeground(TEXT_DARK);
+        memberLabel.setFont(GEORGIA_PLAIN);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(memberLabel, gbc);
@@ -2925,9 +3560,9 @@ public class LibraryDashboard extends JFrame {
         row++;
 
         JPanel buttonPanel = new JPanel(new FlowLayout());
-        buttonPanel.setBackground(PRIMARY_PINK);
-        JButton processBtn = createStyledButton("Proceseaza Returnare", DARK_PINK, Color.BLACK);
-        JButton cancelBtn = createStyledButton("Anuleaza", DARK_PINK, Color.BLACK);
+        buttonPanel.setBackground(CREAM_50);
+        JButton processBtn = createStyledButton("Proceseaza Returnare", FOREST_500, TEXT_DARK);
+        JButton cancelBtn = createStyledButton("Anuleaza", FOREST_500, TEXT_DARK);
         buttonPanel.add(processBtn);
         buttonPanel.add(cancelBtn);
 
@@ -2952,12 +3587,10 @@ public class LibraryDashboard extends JFrame {
                         }
                     }
 
-                    memberCombo.setEnabled(true);
                     List<MemberDisplay> memberDisplays = new ArrayList<>();
                     for (Member member : membersWhoBorrowed) {
                         memberDisplays.add(new MemberDisplay(member));
                     }
-
                     memberCombo.setItems(memberDisplays);
 
                     if (membersWhoBorrowed.isEmpty()) {
@@ -2982,7 +3615,7 @@ public class LibraryDashboard extends JFrame {
             Member member = selectedMember.getMember();
 
             if (book == null || member == null) {
-                JOptionPane.showMessageDialog(dialog, "Date invalide!", "Eroare", JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(dialog, "Date invalide!", "Eroare", JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
@@ -3027,6 +3660,7 @@ public class LibraryDashboard extends JFrame {
             activeLoan.close();
             stockService.increaseStock(book.getIsbn(), 1);
 
+            AuditLogger.getInstance().log("RETUR_CARTE", member.getUserName() + " (ID: " + member.getUserId() + ") a returnat \"" + book.getTitle() + "\" (ID: " + book.getItemId() + "). Penalizare: " + penalty + " lei, Zile intarziere: " + daysLate);
             receiptMenu.printReturnReceipt(activeLoan, returnDate, daysLate, penalty, penalty > 0);
 
             if (loansTable != null) {
@@ -3064,16 +3698,16 @@ public class LibraryDashboard extends JFrame {
     }
 
     private void styleTextField(JTextField field) {
-        field.setBackground(Color.WHITE);
-        field.setForeground(Color.BLACK);
-        field.setFont(new Font("Garamond", Font.PLAIN, 12));
-        field.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        field.setBackground(CREAM_50);
+        field.setForeground(TEXT_DARK);
+        field.setFont(GEORGIA_PLAIN);
+        field.setBorder(BorderFactory.createLineBorder(CREAM_200));
     }
 
     private void addFormRow(JDialog dialog, String label, JComponent field, GridBagConstraints gbc, int row) {
         JLabel lbl = new JLabel(label);
-        lbl.setForeground(Color.BLACK);
-        lbl.setFont(new Font("Garamond", Font.PLAIN, 12));
+        lbl.setForeground(TEXT_DARK);
+        lbl.setFont(GEORGIA_PLAIN);
         gbc.gridx = 0;
         gbc.gridy = row;
         dialog.add(lbl, gbc);
@@ -3081,26 +3715,10 @@ public class LibraryDashboard extends JFrame {
         dialog.add(field, gbc);
     }
 
-    private void addFormRowToPanel(JPanel panel, String label, JComponent field, GridBagConstraints gbc, int row) {
-        JLabel lbl = new JLabel(label);
-        lbl.setForeground(Color.BLACK);
-        lbl.setFont(new Font("Garamond", Font.PLAIN, 12));
-        gbc.gridx = 0;
-        gbc.gridy = row;
-        panel.add(lbl, gbc);
-        gbc.gridx = 1;
-        panel.add(field, gbc);
-    }
-
     public class MemberDisplay {
         private Member member;
-
-        public MemberDisplay(Member member) {
-            this.member = member;
-        }
-
+        public MemberDisplay(Member member) { this.member = member; }
         public Member getMember() { return member; }
-
         @Override
         public String toString() {
             return String.format("%s (ID: %d, Membership: %s, Tip: %s)",
@@ -3111,13 +3729,8 @@ public class LibraryDashboard extends JFrame {
 
     public class BookDisplay {
         private Book book;
-
-        public BookDisplay(Book book) {
-            this.book = book;
-        }
-
+        public BookDisplay(Book book) { this.book = book; }
         public Book getBook() { return book; }
-
         @Override
         public String toString() {
             return String.format("%s - %s (ID: %d, ISBN: %s)",
@@ -3132,7 +3745,56 @@ public class LibraryDashboard extends JFrame {
         } catch (Exception e) {
             e.printStackTrace();
         }
-
         SwingUtilities.invokeLater(() -> new LibraryDashboard().setVisible(true));
     }
+
+    private void showStatisticsDialog() {
+        StatisticsVisitor visitor = new StatisticsVisitor();
+
+        for (IBorrowable item : bookService.findAllBooks()) {
+            if (item instanceof Book book) book.accept(visitor);
+        }
+
+        for (LibraryItem item : newspaperService.getAllItems()) {
+            if (item instanceof Newspaper newspaper) newspaper.accept(visitor);
+        }
+
+        for (Loan loan : loanService.getAllLoans()) loan.accept(visitor);
+        for (Member member : memberService.getAllMembers()) member.accept(visitor);
+
+        StatisticsResult result = visitor.getResults();
+        result.printStatistics();
+        AuditLogger.getInstance().log("STATISTICS_VISITOR", "Statistici generate folosind Visitor Pattern");
+
+        JOptionPane.showMessageDialog(this,
+                "Statistici generate!\nVerificati consola pentru detalii",
+                "Statistici",
+                JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void initRefreshMediator() {
+        DashboardRefreshMediator mediator = DashboardRefreshMediator.getInstance();
+        SwingUtilities.invokeLater(() -> {
+            for (Component comp : contentPanel.getComponents()) {
+                if (comp instanceof JPanel panel) findAndRegisterTables(panel, mediator);
+            }
+        });
+    }
+
+    private void findAndRegisterTables(JPanel panel, DashboardRefreshMediator mediator) {
+        for (Component comp : panel.getComponents()) {
+            if (comp instanceof JScrollPane scroll && scroll.getViewport().getView() instanceof JTable table) {
+                AbstractTableModel model = (AbstractTableModel) table.getModel();
+                if (model instanceof BooksTableModel) mediator.setComponentA(model);
+                else if (model instanceof ActiveLoansTableModel) {
+                    mediator.setComponentB(model);
+                    mediator.setComponentF(table);
+                } else if (model instanceof ClosedLoansTableModel) mediator.setComponentD(model);
+                else if (model instanceof MembersTableModel) mediator.setComponentC(model);
+            } else if (comp instanceof JPanel subPanel) {
+                findAndRegisterTables(subPanel, mediator);
+            }
+        }
+    }
 }
+

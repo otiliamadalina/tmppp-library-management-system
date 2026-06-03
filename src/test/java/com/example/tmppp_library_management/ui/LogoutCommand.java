@@ -24,6 +24,5 @@ public class LogoutCommand implements Command {
 
     @Override
     public void undo() {
-        // Nu se poate face undo la logout
     }
 }

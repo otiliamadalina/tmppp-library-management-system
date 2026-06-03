@@ -23,14 +23,12 @@ public class EventService {
         return instance;
     }
 
-    // METODA NOUA - creeaza eveniment cu locuri nelimitate
     public SingleEvent createEvent(String name, String date, String location, String type) {
         SingleEvent event = new SingleEvent(nextEventId++, name, date, location, type);
         allEvents.add(event);
         return event;
     }
 
-    // Metoda existenta - creeaza eveniment cu capacitate limitata
     public SingleEvent createEventWithCapacity(String name, String date, String location, String type, int maxParticipants) {
         SingleEvent event = new SingleEvent(nextEventId++, name, date, location, type, maxParticipants);
         allEvents.add(event);

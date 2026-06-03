@@ -88,22 +88,21 @@ public class StockService {
     public void decreaseStock(String itemId, int quantity) {
         Stock stock = stocks.get(itemId);
         if (stock != null) {
-            int newQuantity = stock.getQuantity() - quantity;
             int newAvailable = stock.getAvailableQuantity() - quantity;
-
-            if (newQuantity < 0) newQuantity = 0;
             if (newAvailable < 0) newAvailable = 0;
-
-            stock.setQuantity(newQuantity);
             stock.setAvailableQuantity(newAvailable);
+            System.out.println("DEBUG decreaseStock: " + itemId + " - Available: " + newAvailable + ", Total: " + stock.getQuantity());
         }
     }
 
     public void increaseStock(String itemId, int quantity) {
         Stock stock = stocks.get(itemId);
         if (stock != null) {
-            stock.setQuantity(stock.getQuantity() + quantity);
-            stock.setAvailableQuantity(stock.getAvailableQuantity() + quantity);
+            int newAvailable = stock.getAvailableQuantity() + quantity;
+            int newTotal = stock.getQuantity() + quantity;
+            stock.setAvailableQuantity(newAvailable);
+            stock.setQuantity(newTotal);
+            System.out.println("DEBUG increaseStock: " + itemId + " - Available: " + newAvailable + ", Total: " + newTotal);
         }
     }
 

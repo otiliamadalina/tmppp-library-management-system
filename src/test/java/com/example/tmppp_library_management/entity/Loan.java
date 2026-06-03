@@ -5,10 +5,13 @@ import com.example.tmppp_library_management.bridge.Penalty;
 import com.example.tmppp_library_management.decorator.BookDecorator;
 import com.example.tmppp_library_management.interfaces.IBorrowable;
 import com.example.tmppp_library_management.user.Member;
+import com.example.tmppp_library_management.visitor.Visitable;
+import com.example.tmppp_library_management.visitor.Visitor;
+
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
-public class Loan {
+public class Loan implements Visitable {
     private int loanId;
     private Member user;
     private IBorrowable item;
@@ -92,5 +95,10 @@ public class Loan {
 
     public String getPenaltyDescription() {
         return penalty != null ? penalty.getDescription() : "Fara penalitate";
+    }
+
+    @Override
+    public void accept(Visitor visitor) {
+        visitor.visit(this);
     }
 }

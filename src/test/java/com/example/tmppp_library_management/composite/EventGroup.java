@@ -37,10 +37,14 @@ public class EventGroup implements EventComponent {
     }
 
     @Override
-    public int getId() { return groupId; }
+    public int getId() {
+        return groupId;
+    }
 
     @Override
-    public String getName() { return groupName; }
+    public String getName() {
+        return groupName;
+    }
 
     @Override
     public String getDate() {
@@ -59,4 +63,5 @@ public class EventGroup implements EventComponent {
         }
         return firstLoc;
     }
+
 }

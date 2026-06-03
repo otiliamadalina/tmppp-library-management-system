@@ -26,8 +26,6 @@ public class MemberService {
         return instance;
     }
 
-    // ============ OPERATII CRUD ============
-
     public Member addMember(String name, String email, MemberType type) {
         String membershipNumber = generateMembershipNumber();
         Member member = new Member(nextMemberId++, name, email, type, membershipNumber);
@@ -125,8 +123,6 @@ public class MemberService {
         return results;
     }
 
-    // ============ AFISARE ============
-
     public void listAllMembers() {
         if (members.isEmpty()) {
             System.out.println("Nu exista membri inregistrati.");
@@ -181,8 +177,6 @@ public class MemberService {
         }
         return total;
     }
-
-    // ============ UTILITARE ============
 
     private String truncate(String text, int maxLength) {
         if (text == null) return "";
